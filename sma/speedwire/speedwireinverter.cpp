@@ -615,6 +615,20 @@ void SpeedwireInverter::processAcPowerResponse(const QByteArray &response)
     // 01 4146 40 7503ba61 00000080 00000080 00000080 00000080 01000000
     // 01 4246 40 7503ba61 00000080 00000080 00000080 00000080 01000000 00000000
 
+
+    // 0a000000 0c000000
+    // 09 4046 40 6740b165 a7feffff a7feffff a7feffff a7feffff 01000000
+    // 09 4146 40 6740b165 a7feffff a7feffff a7feffff a7feffff 01000000
+    // 09 4246 40 6740b165 a6feffff a6feffff a6feffff a6feffff 01000000
+    // 00000000
+
+    // 2024-01-24T17:52:55.403637+01:00 nymea-energy nymead[22474]:  D | Sma: Inverter: Process AC power query response "0a0000000c000000094046406740b165a7feffffa7feffffa7feffffa7feffff01000000094146406740b165a7feffffa7feffffa7feffffa7feffff01000000094246406740b165a6feffffa6feffffa6feffffa6feffff0100000000000000"
+    // 2024-01-24T17:52:55.407103+01:00 nymea-energy nymead[22474]:  D | Sma: Inverter: Power AC phase 1 4.29497e+06 W
+    // 2024-01-24T17:52:55.412918+01:00 nymea-energy nymead[22474]:  D | Sma: Inverter: Power AC phase 2 4.29497e+06 W
+    // 2024-01-24T17:52:55.415468+01:00 nymea-energy nymead[22474]:  D | Sma: Inverter: Power AC phase 3 4.29497e+06 W
+
+
+
     // Sun
     // 07000000 09000000
     // 01 4046 40 77fbba61 23000000 23000000 23000000 23000000 01000000
@@ -1132,7 +1146,9 @@ void SpeedwireInverter::readUntilEndOfMeasurement(QDataStream &stream)
 
 double SpeedwireInverter::readValue(quint32 value, double divisor)
 {
-    if (value == 0x80000000 || value == 0xffffffff)
+    // Note: the first 2 are verifies as invalid values, the last one has been seen on some system in the field,
+    // where the inverter has sent garbage data, the only consistancy was the ffff xxxx.
+    if (value == 0x80000000 || value == 0xffffffff || ((value & 0xffff0000) == 0xffff0000))
         return 0;
 
     return value / divisor;
@@ -1140,7 +1156,7 @@ double SpeedwireInverter::readValue(quint32 value, double divisor)
 
 double SpeedwireInverter::readValue(qint32 value, double divisor)
 {
-    if (static_cast<quint32>(value) == 0x80000000 || static_cast<quint32>(value) == 0xffffffff)
+    if (static_cast<quint32>(value) == 0x80000000 || static_cast<quint32>(value) == 0xffffffff || (( static_cast<quint32>(value) & 0xffff0000) == 0xffff0000))
         return 0;
 
     return value / divisor;
