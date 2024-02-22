@@ -764,7 +764,7 @@ def writeUpdateMethodTcp(fileDescriptor, className, registerDefinitions, blockDe
     # First check if there are any update registers
     updateRequired = False
     for registerDefinition in registerDefinitions:
-        if registerDefinition['readSchedule'] == 'update':
+        if 'readSchedule' in registerDefinition and registerDefinition['readSchedule'] == 'update':
             updateRequired = True
             break
 
