@@ -112,7 +112,7 @@
             "registers": [
                 {
                     "id": "chargingState",
-                    "address": 40101,
+                    "address": 101,
                     "size": 1,
                     "type": "uint16",
                     "registerType": "holdingRegister",
@@ -123,7 +123,7 @@
                 },
                 {
                     "id": "chargingRelayState",
-                    "address": 40102,
+                    "address": 102,
                     "size": 1,
                     "type": "uint16",
                     "registerType": "holdingRegister",
@@ -134,7 +134,7 @@
                 },
                 {
                     "id": "maxChargingCurrentDip",
-                    "address": 40103,
+                    "address": 103,
                     "size": 1,
                     "type": "uint16",
                     "registerType": "holdingRegister",
@@ -145,7 +145,7 @@
                 },
                 {
                     "id": "phaseAutoSwitch",
-                    "address": 40104,
+                    "address": 104,
                     "size": 1,
                     "type": "uint16",
                     "registerType": "holdingRegister",
@@ -155,7 +155,7 @@
                 },
                 {
                     "id": "activeChargingCurrent",
-                    "address": 40105,
+                    "address": 105,
                     "size": 1,
                     "type": "uint16",
                     "registerType": "holdingRegister",
@@ -166,7 +166,7 @@
                 },
                 {
                     "id": "sessionDuration",
-                    "address": 40106,
+                    "address": 106,
                     "size": 1,
                     "type": "uint16",
                     "registerType": "holdingRegister",
@@ -177,7 +177,7 @@
                 },
                 {
                     "id": "powerMeter0",
-                    "address": 40107,
+                    "address": 107,
                     "size": 1,
                     "type": "uint16",
                     "registerType": "holdingRegister",
@@ -189,7 +189,7 @@
                 },
                 {
                     "id": "powerMeter1",
-                    "address": 40108,
+                    "address": 108,
                     "size": 1,
                     "type": "uint16",
                     "registerType": "holdingRegister",
@@ -201,7 +201,7 @@
                 },
                 {
                     "id": "powerMeter3",
-                    "address": 40109,
+                    "address": 109,
                     "size": 1,
                     "type": "uint16",
                     "registerType": "holdingRegister",
@@ -213,7 +213,7 @@
                 },
                 {
                     "id": "temperature",
-                    "address": 40110,
+                    "address": 110,
                     "size": 1,
                     "type": "uint16",
                     "registerType": "holdingRegister",
@@ -225,7 +225,7 @@
                 },
                 {
                     "id": "error",
-                    "address": 40111,
+                    "address": 111,
                     "size": 1,
                     "type": "uint16",
                     "registerType": "holdingRegister",
@@ -242,7 +242,7 @@
             "registers": [
                 {
                     "id": "firmwareRevision",
-                    "address": 40136,
+                    "address": 136,
                     "size": 2,
                     "type": "string",
                     "registerType": "holdingRegister",
@@ -251,7 +251,7 @@
                 },
                 {
                     "id": "hardwareRevision",
-                    "address": 40138,
+                    "address": 138,
                     "size": 1,
                     "type": "uint16",
                     "registerType": "holdingRegister",
@@ -261,16 +261,16 @@
                 },
                 {
                     "id": "serialNumber",
-                    "address": 40139,
-                    "size": 3,
-                    "type": "raw",
+                    "address": 139,
+                    "size": 2,
+                    "type": "uint32",
                     "registerType": "holdingRegister",
                     "description": "Serial number",
                     "access": "R"
                 },
                 {
                     "id": "macAddress",
-                    "address": 40142,
+                    "address": 141,
                     "size": 3,
                     "type": "raw",
                     "registerType": "holdingRegister",
@@ -283,7 +283,7 @@
     "registers": [
         {
             "id": "chargingCurrent",
-            "address": 40201,
+            "address": 201,
             "size": 1,
             "type": "uint16",
             "registerType": "holdingRegister",
@@ -293,7 +293,7 @@
         },
         {
             "id": "chargingCurrentOffline",
-            "address": 40202,
+            "address": 202,
             "size": 1,
             "type": "uint16",
             "registerType": "holdingRegister",
@@ -303,7 +303,7 @@
         },
         {
             "id": "maxChargingTime",
-            "address": 40203,
+            "address": 203,
             "size": 1,
             "type": "uint16",
             "registerType": "holdingRegister",
@@ -313,7 +313,7 @@
         },
         {
             "id": "heartbeat",
-            "address": 40204,
+            "address": 204,
             "size": 1,
             "type": "uint16",
             "registerType": "holdingRegister",
@@ -322,7 +322,7 @@
         },
         {
             "id": "ledBrightness",
-            "address": 40205,
+            "address": 205,
             "size": 1,
             "type": "uint16",
             "registerType": "holdingRegister",

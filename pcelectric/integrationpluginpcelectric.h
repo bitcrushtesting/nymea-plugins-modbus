@@ -28,8 +28,8 @@
 *
 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-#ifndef INTEGRATIONPLUGINPCE_H
-#define INTEGRATIONPLUGINPCE_H
+#ifndef INTEGRATIONPLUGINPCELECTRIC_H
+#define INTEGRATIONPLUGINPCELECTRIC_H
 
 #include <QObject>
 
@@ -61,4 +61,4 @@ private:
     QHash<Thing *, EV11ModbusTcpConnection *> m_connections;
 };
 
-#endif // INTEGRATIONPLUGINPCE_H
+#endif // INTEGRATIONPLUGINPCELECTRIC_H
