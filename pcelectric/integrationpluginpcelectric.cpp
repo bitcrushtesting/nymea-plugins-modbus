@@ -28,76 +28,82 @@
 *
 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-#include "integrationpluginpce.h"
+#include "integrationpluginpcelectric.h"
+#include "pcelectricdiscovery.h"
 #include "plugininfo.h"
 
+#include <hardwaremanager.h>
 #include <hardware/electricity.h>
+#include <network/networkdevicediscovery.h>
 
-IntegrationPluginPce::IntegrationPluginPce()
+IntegrationPluginPcElectric::IntegrationPluginPcElectric()
 {
 }
 
-void IntegrationPluginPce::init()
+void IntegrationPluginPcElectric::init()
 {
 
 }
 
-void IntegrationPluginPce::discoverThings(ThingDiscoveryInfo *info)
+void IntegrationPluginPcElectric::discoverThings(ThingDiscoveryInfo *info)
 {
-    Q_UNUSED(info)
-    // CionDiscovery *discovery = new CionDiscovery(hardwareManager()->modbusRtuResource(), info);
 
-    // connect(discovery, &CionDiscovery::discoveryFinished, info, [this, info, discovery](bool modbusMasterAvailable){
-    //     if (!modbusMasterAvailable) {
-    //         info->finish(Thing::ThingErrorHardwareNotAvailable, QT_TR_NOOP("No modbus RTU master with appropriate settings found. Please set up a modbus RTU master with a baudrate of 57600, 8 data bis, 1 stop bit and no parity first."));
-    //         return;
-    //     }
+    if (!hardwareManager()->networkDeviceDiscovery()->available()) {
+        qCWarning(dcPcElectric()) << "The network discovery is not available on this platform.";
+        info->finish(Thing::ThingErrorUnsupportedFeature, QT_TR_NOOP("The network device discovery is not available."));
+        return;
+    }
 
-    //     qCInfo(dcPce()) << "Discovery results:" << discovery->discoveryResults().count();
+    // Create a discovery with the info as parent for auto deleting the object once the discovery info is done
+    PcElectricDiscovery *discovery = new PcElectricDiscovery(hardwareManager()->networkDeviceDiscovery(), 502, 1, info);
+    connect(discovery, &PcElectricDiscovery::discoveryFinished, info, [=](){
+        foreach (const PcElectricDiscovery::Result &result, discovery->results()) {
 
-    //     foreach (const CionDiscovery::Result &result, discovery->discoveryResults()) {
-    //         ThingDescriptor descriptor(cionThingClassId, "Schrack CION", QString("Slave ID: %1, Version: %2").arg(result.slaveId).arg(result.firmwareVersion));
+            ThingDescriptor descriptor(ev11ThingClassId, "PCE EV11.3", "Serial: " + result.serialNumber + " - " + result.networkDeviceInfo.address().toString());
+            qCDebug(dcPcElectric()) << "Discovered:" << descriptor.title() << descriptor.description();
 
-    //         ParamList params{
-    //             {cionThingModbusMasterUuidParamTypeId, result.modbusRtuMasterId},
-    //             {cionThingSlaveAddressParamTypeId, result.slaveId}
-    //         };
-    //         descriptor.setParams(params);
+            // Check if we already have set up this device
+            Things existingThings = myThings().filterByParam(ev11ThingMacAddressParamTypeId, result.networkDeviceInfo.macAddress());
+            if (existingThings.count() == 1) {
+                qCDebug(dcPcElectric()) << "This PCE wallbox already exists in the system:" << result.networkDeviceInfo;
+                descriptor.setThingId(existingThings.first()->id());
+            }
 
-    //         Thing *existingThing = myThings().findByParams(params);
-    //         if (existingThing) {
-    //             descriptor.setThingId(existingThing->id());
-    //         }
-    //         info->addThingDescriptor(descriptor);
-    //     }
+            ParamList params;
+            params << Param(ev11ThingMacAddressParamTypeId, result.networkDeviceInfo.macAddress());
+            // Note: if we discover also the port and modbusaddress, we must fill them in from the discovery here, for now everywhere the defaults...
+            descriptor.setParams(params);
+            info->addThingDescriptor(descriptor);
+        }
 
-    //     info->finish(Thing::ThingErrorNoError);
-    // });
+        info->finish(Thing::ThingErrorNoError);
+    });
 
-    // discovery->startDiscovery();
+    // Start the discovery process
+    discovery->startDiscovery();
 }
 
-void IntegrationPluginPce::setupThing(ThingSetupInfo *info)
+void IntegrationPluginPcElectric::setupThing(ThingSetupInfo *info)
 {
     Thing *thing = info->thing();
-    qCDebug(dcPce()) << "Setup thing" << thing << thing->params();
+    qCDebug(dcPcElectric()) << "Setup thing" << thing << thing->params();
 
 //     uint address = thing->paramValue(cionThingSlaveAddressParamTypeId).toUInt();
 //     if (address > 254 || address == 0) {
-//         qCWarning(dcPce()) << "Setup failed, slave address is not valid" << address;
+//         qCWarning(dcPcElectric()) << "Setup failed, slave address is not valid" << address;
 //         info->finish(Thing::ThingErrorSetupFailed, QT_TR_NOOP("The Modbus address not valid. It must be a value between 1 and 254."));
 //         return;
 //     }
 
 //     QUuid uuid = thing->paramValue(cionThingModbusMasterUuidParamTypeId).toUuid();
 //     if (!hardwareManager()->modbusRtuResource()->hasModbusRtuMaster(uuid)) {
-//         qCWarning(dcPce()) << "Setup failed, hardware manager not available";
+//         qCWarning(dcPcElectric()) << "Setup failed, hardware manager not available";
 //         info->finish(Thing::ThingErrorSetupFailed, QT_TR_NOOP("The Modbus RTU resource is not available."));
 //         return;
 //     }
 
 //     if (m_connections.contains(thing)) {
-//         qCDebug(dcPce()) << "Already have a CION connection for this thing. Cleaning up old connection and initializing new one...";
+//         qCDebug(dcPcElectric()) << "Already have a CION connection for this thing. Cleaning up old connection and initializing new one...";
 //         delete m_connections.take(thing);
 //     }
 
@@ -108,7 +114,7 @@ void IntegrationPluginPce::setupThing(ThingSetupInfo *info)
 //     }
 
 //     connect(cionConnection, &CionModbusRtuConnection::reachableChanged, thing, [cionConnection, thing](bool reachable){
-//         qCDebug(dcPce()) << "Reachable state changed" << reachable;
+//         qCDebug(dcPcElectric()) << "Reachable state changed" << reachable;
 //         if (reachable) {
 //             cionConnection->initialize();
 //         } else {
@@ -117,7 +123,7 @@ void IntegrationPluginPce::setupThing(ThingSetupInfo *info)
 //     });
 
 //     connect(cionConnection, &CionModbusRtuConnection::initializationFinished, info, [=](bool success){
-//         qCDebug(dcPce()) << "Initialisation finished" << success << "DIP switche states:" << cionConnection->dipSwitches();
+//         qCDebug(dcPcElectric()) << "Initialisation finished" << success << "DIP switche states:" << cionConnection->dipSwitches();
 //         if (info->isInitialSetup()) {
 //             if (success) {
 //                 m_connections.insert(thing, cionConnection);
@@ -131,17 +137,17 @@ void IntegrationPluginPce::setupThing(ThingSetupInfo *info)
 //     });
 
 //     connect(cionConnection, &CionModbusRtuConnection::updateFinished, thing, [cionConnection, thing](){
-//         qCDebug(dcPce()) << "Update finished:" << thing->name() << cionConnection;
+//         qCDebug(dcPcElectric()) << "Update finished:" << thing->name() << cionConnection;
 //     });
 
 //     connect(cionConnection, &CionModbusRtuConnection::reachableChanged, thing, [thing](bool reachable){
-//         qCDebug(dcPce()) << "Reachable changed:" << thing->name() << reachable;
+//         qCDebug(dcPcElectric()) << "Reachable changed:" << thing->name() << reachable;
 //     });
 
 
 //     // Note: This register really only tells us if we can control anything... i.e. if the wallbox is unlocked via RFID
 //     connect(cionConnection, &CionModbusRtuConnection::chargingEnabledChanged, thing, [=](quint16 charging){
-//         qCDebug(dcPce()) << "Charge control enabled changed:" << charging;
+//         qCDebug(dcPcElectric()) << "Charge control enabled changed:" << charging;
 //         // If this register goes 0->1 it means charging has been started. This could be because of an RFID tag.
 //         // As we have may set charging current to 0 ourselves, we'll want to activate it again here
 //         uint maxSetPoint = thing->stateValue(cionMaxChargingCurrentStateTypeId).toUInt();
@@ -155,20 +161,20 @@ void IntegrationPluginPce::setupThing(ThingSetupInfo *info)
 //     // We'll use that for setting our state, just monitoring this one on the logs
 //     // Setting this to 0 will pause charging, anything else will control the charging (and return the actual value in currentChargingCurrentE3)
 //     connect(cionConnection, &CionModbusRtuConnection::chargingCurrentSetpointChanged, thing, [=](quint16 chargingCurrentSetpoint){
-//         qCDebug(dcPce()) << "Charging current setpoint changed:" << chargingCurrentSetpoint;
+//         qCDebug(dcPcElectric()) << "Charging current setpoint changed:" << chargingCurrentSetpoint;
 //     });
 
 //     connect(cionConnection, &CionModbusRtuConnection::cpSignalStateChanged, thing, [=](quint16 cpSignalState){
-//         qCDebug(dcPce()) << "CP Signal state changed:" << (char)cpSignalState;
+//         qCDebug(dcPcElectric()) << "CP Signal state changed:" << (char)cpSignalState;
 //         if (cpSignalState < 65 || cpSignalState > 68) {
-//             qCWarning(dcPce()) << "Ignoring bogus CP signal state value" << cpSignalState;
+//             qCWarning(dcPcElectric()) << "Ignoring bogus CP signal state value" << cpSignalState;
 //             return;
 //         }
 //         thing->setStateValue(cionPluggedInStateTypeId, cpSignalState >= 66);
 //     });
 
 //     connect(cionConnection, &CionModbusRtuConnection::currentChargingCurrentE3Changed, thing, [=](quint16 currentChargingCurrentE3){
-//         qCDebug(dcPce()) << "Current charging current E3 current changed:" << currentChargingCurrentE3;
+//         qCDebug(dcPcElectric()) << "Current charging current E3 current changed:" << currentChargingCurrentE3;
 //         if (cionConnection->chargingEnabled() == 1 && cionConnection->chargingCurrentSetpoint() > 0) {
 //             thing->setStateValue(cionMaxChargingCurrentStateTypeId, currentChargingCurrentE3);
 //             thing->setStateValue(cionPowerStateTypeId, true);
@@ -180,7 +186,7 @@ void IntegrationPluginPce::setupThing(ThingSetupInfo *info)
 //     // The maxChargingCurrentE3 takes into account the DIP switches and connected cable, so this is effectively
 //     // our maximum. However, it will go to 0 when unplugged, which is odd, so we'll ignore 0 values.
 //     connect(cionConnection, &CionModbusRtuConnection::maxChargingCurrentE3Changed, thing, [=](quint16 maxChargingCurrentE3){
-//         qCDebug(dcPce()) << "Maximum charging current E3 current changed:" << maxChargingCurrentE3;
+//         qCDebug(dcPcElectric()) << "Maximum charging current E3 current changed:" << maxChargingCurrentE3;
 //         if (maxChargingCurrentE3 != 0) {
 //             thing->setStateMaxValue(cionMaxChargingCurrentStateTypeId, maxChargingCurrentE3);
 //         }
@@ -190,35 +196,35 @@ void IntegrationPluginPce::setupThing(ThingSetupInfo *info)
 //         thing->setStateValue(cionConnectedStateTypeId, true);
 //         StatusBits status = static_cast<StatusBits>(statusBits);
 //         // TODO: Verify if the statusBit for PluggedIn is reliable and if so, use that instead of the plugged in time for the plugged in state.
-//         qCDebug(dcPce()) << "Status bits changed:" << status;
+//         qCDebug(dcPcElectric()) << "Status bits changed:" << status;
 //     });
 
 //     connect(cionConnection, &CionModbusRtuConnection::minChargingCurrentChanged, thing, [=](quint16 minChargingCurrent){
-//         qCDebug(dcPce()) << "Minimum charging current changed:" << minChargingCurrent;
+//         qCDebug(dcPcElectric()) << "Minimum charging current changed:" << minChargingCurrent;
 //         if (minChargingCurrent > 32) {
 //             // Apparently this register occationally holds random values... As a quick'n dirty workaround we'll ignore everything > 32
-//             qCWarning(dcPce()) << "Detected a bogus min charging current register value (reg. 507) of" << minChargingCurrent << ". Ignoring it...";
+//             qCWarning(dcPcElectric()) << "Detected a bogus min charging current register value (reg. 507) of" << minChargingCurrent << ". Ignoring it...";
 //             return;
 //         }
 //         thing->setStateMinValue(cionMaxChargingCurrentStateTypeId, minChargingCurrent);
 //     });
 
 //     connect(cionConnection, &CionModbusRtuConnection::gridVoltageChanged, thing, [=](float /*gridVoltage*/){
-// //        qCDebug(dcPce()) << "Grid voltage changed:" << gridVoltage;
+// //        qCDebug(dcPcElectric()) << "Grid voltage changed:" << gridVoltage;
 //     });
 
 //     connect(cionConnection, &CionModbusRtuConnection::u1VoltageChanged, thing, [=](float /*u1Voltage*/){
-// //        qCDebug(dcPce()) << "U1 voltage changed:" << u1Voltage;
+// //        qCDebug(dcPcElectric()) << "U1 voltage changed:" << u1Voltage;
 //     });
 
 //     connect(cionConnection, &CionModbusRtuConnection::pluggedInDurationChanged, thing, [=](quint32 /*pluggedInDuration*/){
-// //        qCDebug(dcPce()) << "Plugged in duration changed:" << pluggedInDuration;
+// //        qCDebug(dcPcElectric()) << "Plugged in duration changed:" << pluggedInDuration;
 //         // Not reliable to determine if plugged in!
 // //        thing->setStateValue(cionPluggedInStateTypeId, pluggedInDuration > 0);
 //     });
 
 //     connect(cionConnection, &CionModbusRtuConnection::chargingDurationChanged, thing, [=](quint32 chargingDuration){
-// //        qCDebug(dcPce()) << "Charging duration changed:" << chargingDuration;
+// //        qCDebug(dcPcElectric()) << "Charging duration changed:" << chargingDuration;
 //         thing->setStateValue(cionChargingStateTypeId, chargingDuration > 0);
 //     });
 
@@ -231,7 +237,7 @@ void IntegrationPluginPce::setupThing(ThingSetupInfo *info)
 
 //     connect(thing, &Thing::settingChanged, this, [this, thing](const ParamTypeId &paramTypeId, const QVariant &value){
 //         if (paramTypeId == cionSettingsPhasesParamTypeId) {
-//             qCInfo(dcPce()) << "The connected phases setting has changed to" << value.toString();
+//             qCInfo(dcPcElectric()) << "The connected phases setting has changed to" << value.toString();
 //             updatePhaseCount(thing, value.toString());
 //         }
 //     });
@@ -239,10 +245,10 @@ void IntegrationPluginPce::setupThing(ThingSetupInfo *info)
 //     updatePhaseCount(thing, thing->setting(cionSettingsPhasesParamTypeId).toString());
 }
 
-void IntegrationPluginPce::postSetupThing(Thing *thing)
+void IntegrationPluginPcElectric::postSetupThing(Thing *thing)
 {
     Q_UNUSED(thing)
-//     qCDebug(dcPce()) << "Post setup thing" << thing->name();
+//     qCDebug(dcPcElectric()) << "Post setup thing" << thing->name();
 //     if (!m_refreshTimer) {
 //         m_refreshTimer = hardwareManager()->pluginTimerManager()->registerTimer(2);
 //         connect(m_refreshTimer, &PluginTimer::timeout, this, [this] {
@@ -263,7 +269,7 @@ void IntegrationPluginPce::postSetupThing(Thing *thing)
 //                 // this piece of code should be replaced with the modbus tool internal connected detection when it's ready
 //                 ModbusRtuReply *reply = connection->readCpSignalState();
 //                 connect(reply, &ModbusRtuReply::finished, thing, [reply, thing, this](){
-// //                    qCDebug(dcPce) << "CP signal state reply finished" << reply->error();
+// //                    qCDebug(dcPcElectric) << "CP signal state reply finished" << reply->error();
 //                     thing->setStateValue(cionConnectedStateTypeId, reply->error() == ModbusRtuReply::NoError);
 
 //                     // The Cion seems to crap out rather often and needs to be reconnected :/
@@ -275,34 +281,34 @@ void IntegrationPluginPce::postSetupThing(Thing *thing)
 //             }
 //         });
 
-//         qCDebug(dcPce()) << "Starting refresh timer...";
+//         qCDebug(dcPcElectric()) << "Starting refresh timer...";
 //         m_refreshTimer->start();
 //     }
 }
 
-void IntegrationPluginPce::thingRemoved(Thing *thing)
+void IntegrationPluginPcElectric::thingRemoved(Thing *thing)
 {
     Q_UNUSED(thing)
 
-    qCDebug(dcPce()) << "Thing removed" << thing->name();
+    qCDebug(dcPcElectric()) << "Thing removed" << thing->name();
 
     if (m_connections.contains(thing))
         m_connections.take(thing)->deleteLater();
 
     if (myThings().isEmpty() && m_refreshTimer) {
-        qCDebug(dcPce()) << "Stopping reconnect timer";
+        qCDebug(dcPcElectric()) << "Stopping reconnect timer";
         hardwareManager()->pluginTimerManager()->unregisterTimer(m_refreshTimer);
         m_refreshTimer = nullptr;
     }
 }
 
-void IntegrationPluginPce::executeAction(ThingActionInfo *info)
+void IntegrationPluginPcElectric::executeAction(ThingActionInfo *info)
 {
     // CionModbusRtuConnection *cionConnection = m_connections.value(info->thing());
     // if (info->action().actionTypeId() == cionPowerActionTypeId) {
     //     bool enabled = info->action().paramValue(cionPowerActionPowerParamTypeId).toBool();
     //     int maxChargingCurrent = enabled ? info->thing()->stateValue(cionMaxChargingCurrentStateTypeId).toUInt() : 0;
-    //     qCDebug(dcPce()) << "Setting charging enabled:" << (enabled ? 1 : 0) << "(charging current setpoint:" << maxChargingCurrent << ")";
+    //     qCDebug(dcPcElectric()) << "Setting charging enabled:" << (enabled ? 1 : 0) << "(charging current setpoint:" << maxChargingCurrent << ")";
 
     //     // Note: If the wallbox has an RFID reader connected, writing register 100 (chargingEnabled) won't work as the RFID
     //     // reader takes control over it. However, if there's no RFID reader connected, we'll have to set it ourselves.
@@ -316,14 +322,14 @@ void IntegrationPluginPce::executeAction(ThingActionInfo *info)
     //     // In case there's no RFID reader
     //     ModbusRtuReply *reply = cionConnection->setChargingEnabled(enabled);
     //     connect(reply, &ModbusRtuReply::finished, info, [reply](){
-    //         qCDebug(dcPce) << "Charging enabled command reply:" << reply->error() << reply->errorString();
+    //         qCDebug(dcPcElectric) << "Charging enabled command reply:" << reply->error() << reply->errorString();
     //     });
 
     //     // And restore the charging current in case setting the above fails
     //     reply = cionConnection->setChargingCurrentSetpoint(maxChargingCurrent);
     //     waitForActionFinish(info, reply, cionPowerStateTypeId, enabled);
     //     connect(reply, &ModbusRtuReply::finished, info, [reply](){
-    //         qCDebug(dcPce) << "Implicit max charging current setpoint command reply:" << reply->error() << reply->errorString();
+    //         qCDebug(dcPcElectric) << "Implicit max charging current setpoint command reply:" << reply->error() << reply->errorString();
     //     });
 
 
@@ -331,20 +337,20 @@ void IntegrationPluginPce::executeAction(ThingActionInfo *info)
     //     // If charging is set to enabled, we'll write the value to the wallbox
     //     uint maxChargingCurrent = info->action().paramValue(cionMaxChargingCurrentActionMaxChargingCurrentParamTypeId).toUInt();
     //     if (info->thing()->stateValue(cionPowerStateTypeId).toBool()) {
-    //         qCDebug(dcPce) << "Charging is enabled. Applying max charging current setpoint of" << maxChargingCurrent << "to wallbox";
+    //         qCDebug(dcPcElectric) << "Charging is enabled. Applying max charging current setpoint of" << maxChargingCurrent << "to wallbox";
     //         ModbusRtuReply *reply = cionConnection->setChargingCurrentSetpoint(maxChargingCurrent);
     //         waitForActionFinish(info, reply, cionMaxChargingCurrentStateTypeId, maxChargingCurrent);
     //         connect(reply, &ModbusRtuReply::finished, info, [reply](){
-    //             qCDebug(dcPce) << "Charging current setpoint command reply:" << reply->error() << reply->errorString();
+    //             qCDebug(dcPcElectric) << "Charging current setpoint command reply:" << reply->error() << reply->errorString();
     //         });
 
     //     } else { // we'll just memorize what the user wants in our state and write it when enabled is set to true
-    //         qCDebug(dcPce) << "Charging is disabled, storing max charging current of" << maxChargingCurrent << "to state";
+    //         qCDebug(dcPcElectric) << "Charging is disabled, storing max charging current of" << maxChargingCurrent << "to state";
     //         info->thing()->setStateValue(cionMaxChargingCurrentStateTypeId, maxChargingCurrent);
     //         info->finish(Thing::ThingErrorNoError);
     //     }
     // }
 
 
-    Q_ASSERT_X(false, "IntegrationPluginPce::executeAction", QString("Unhandled action: %1").arg(info->action().actionTypeId().toString()).toLocal8Bit());
+    Q_ASSERT_X(false, "IntegrationPluginPcElectric::executeAction", QString("Unhandled action: %1").arg(info->action().actionTypeId().toString()).toLocal8Bit());
 }

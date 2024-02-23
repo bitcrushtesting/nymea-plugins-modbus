@@ -31,25 +31,23 @@
 #ifndef INTEGRATIONPLUGINPCE_H
 #define INTEGRATIONPLUGINPCE_H
 
+#include <QObject>
+
 #include <integrations/integrationplugin.h>
 #include <plugintimer.h>
 
+#include "ev11modbustcpconnection.h"
 #include "extern-plugininfo.h"
 
-#include "ev11modbustcpconnection.h"
-
-#include <QObject>
-#include <QTimer>
-
-class IntegrationPluginPce : public IntegrationPlugin
+class IntegrationPluginPcElectric : public IntegrationPlugin
 {
     Q_OBJECT
 
-    Q_PLUGIN_METADATA(IID "io.nymea.IntegrationPlugin" FILE "integrationpluginpce.json")
+    Q_PLUGIN_METADATA(IID "io.nymea.IntegrationPlugin" FILE "integrationpluginpcelectric.json")
     Q_INTERFACES(IntegrationPlugin)
 
 public:
-    explicit IntegrationPluginPce();
+    explicit IntegrationPluginPcElectric();
     void init() override;
 
     void discoverThings(ThingDiscoveryInfo *info) override;

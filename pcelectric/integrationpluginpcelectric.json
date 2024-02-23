@@ -1,11 +1,11 @@
 {
-    "name": "pce",
+    "name": "PcElectric",
     "displayName": "PC Electric",
     "id": "aa7ff833-a8e0-45cc-a1ef-65f05871f272",
     "paramTypes":[ ],
     "vendors": [
     	{
-            "name": "pce",
+            "name": "PcElectric",
             "displayName": "PC Electric GmbH",
             "id": "b365937b-f1d6-46bf-9ff1-e787373b8aa6",
             "thingClasses": [

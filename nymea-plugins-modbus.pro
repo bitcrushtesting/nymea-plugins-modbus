@@ -17,7 +17,7 @@ PLUGIN_DIRS = \
     modbuscommander         \
     mtec                    \
     mypv                    \
-    pce                     \
+    pcelectric              \
     phoenixconnect          \
     schrack                 \
     senseair                \

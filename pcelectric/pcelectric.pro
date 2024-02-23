@@ -6,8 +6,10 @@ MODBUS_CONNECTIONS += EV11.3-registers.json
 include(../modbus.pri)
 
 HEADERS += \
-    integrationpluginpce.h
+    integrationpluginpcelectric.h \
+    pcelectricdiscovery.h
 
 SOURCES += \
-    integrationpluginpce.cpp
+    integrationpluginpcelectric.cpp \
+    pcelectricdiscovery.cpp
 
