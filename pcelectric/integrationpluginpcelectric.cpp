@@ -304,6 +304,7 @@ void IntegrationPluginPcElectric::thingRemoved(Thing *thing)
 
 void IntegrationPluginPcElectric::executeAction(ThingActionInfo *info)
 {
+    Q_UNUSED(info)
     // CionModbusRtuConnection *cionConnection = m_connections.value(info->thing());
     // if (info->action().actionTypeId() == cionPowerActionTypeId) {
     //     bool enabled = info->action().paramValue(cionPowerActionPowerParamTypeId).toBool();
