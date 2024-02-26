@@ -11,7 +11,7 @@
             "thingClasses": [
                 {
                     "name": "ev11",
-                    "displayName": "PCE EV11.X",
+                    "displayName": "PCE EV11.3",
                     "id": "88d96940-a940-4a07-8176-5e6aba7ca832",
                     "createMethods": ["discovery", "user"],
                     "interfaces": ["evcharger", "connectable"],
@@ -107,20 +107,6 @@
                         },
                         {
                             "id": "142b4276-e2e9-4149-adc4-89d9d3e31117",
-                            "name": "currentVersion",
-                            "displayName": "Firmware version",
-                            "type": "QString",
-                            "defaultValue": ""
-                        },
-                        {
-                            "id": "b6e65baf-6dcd-4db1-a3dc-962a4c33d157",
-                            "name": "hardwareVersion",
-                            "displayName": "Hardware version",
-                            "type": "QString",
-                            "defaultValue": ""
-                        },
-                        {
-                            "id": "18cb622c-023c-4a9a-8429-ba8859ba8799",
                             "name": "currentVersion",
                             "displayName": "Firmware version",
                             "type": "QString",

@@ -102,6 +102,13 @@ def writeTcpHeaderFile():
         # Write block get/set method declarations
         writeBlocksUpdateMethodDeclarations(headerFile, registerJson['blocks'])
 
+    # Write registers get/set data unit declarations
+    writePropertyGetSetDataUnitDeclarationsTcp(headerFile, registerJson['registers'])
+    if 'blocks' in registerJson:
+        for blockDefinition in registerJson['blocks']:
+            writePropertyGetSetDataUnitDeclarationsTcp(headerFile, blockDefinition['registers'])
+
+    # Update methods
     writePropertyUpdateMethodDeclarations(headerFile, registerJson['registers'])
     writeLine(headerFile)
     if 'blocks' in registerJson:
@@ -333,6 +340,14 @@ def writeTcpSourceFile():
     if 'blocks' in registerJson:
         for blockDefinition in registerJson['blocks']:
             writePropertyGetSetMethodImplementationsTcp(sourceFile, className, blockDefinition['registers'])
+
+
+    # Property get/set data unit methods
+    writePropertyGetSetDataUnitImplementationsTcp(sourceFile, className, registerJson['registers'])
+    if 'blocks' in registerJson:
+        for blockDefinition in registerJson['blocks']:
+            writePropertyGetSetDataUnitImplementationsTcp(sourceFile, className, blockDefinition['registers'])
+
 
     # Write init and update method implementation
     blocks = []

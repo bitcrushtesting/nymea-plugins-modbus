@@ -28,42 +28,30 @@
 *
 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-#ifndef INTEGRATIONPLUGINPCELECTRIC_H
-#define INTEGRATIONPLUGINPCELECTRIC_H
+#ifndef PCEWALLBOX_H
+#define PCEWALLBOX_H
 
 #include <QObject>
+#include <QTimer>
 
-#include <integrations/integrationplugin.h>
-#include <network/networkdevicediscovery.h>
-#include <plugintimer.h>
+#include "ev11modbustcpconnection.h"
 
-#include "pcewallbox.h"
-#include "extern-plugininfo.h"
-
-class IntegrationPluginPcElectric : public IntegrationPlugin
+class PceWallbox : public EV11ModbusTcpConnection
 {
     Q_OBJECT
-
-    Q_PLUGIN_METADATA(IID "io.nymea.IntegrationPlugin" FILE "integrationpluginpcelectric.json")
-    Q_INTERFACES(IntegrationPlugin)
-
 public:
-    explicit IntegrationPluginPcElectric();
-    void init() override;
+    explicit PceWallbox(const QHostAddress &hostAddress, uint port, quint16 slaveId, QObject *parent = nullptr);
 
-    void discoverThings(ThingDiscoveryInfo *info) override;
-    void setupThing(ThingSetupInfo *info) override;
-    void postSetupThing(Thing *thing) override;
-    void thingRemoved(Thing *thing) override;
-    void executeAction(ThingActionInfo *info) override;
+    bool update() override;
 
 private:
-    PluginTimer *m_refreshTimer = nullptr;
-    QHash<Thing *, PceWallbox *> m_connections;
-    QHash<Thing *, NetworkDeviceMonitor *> m_monitors;
+    QTimer m_timer;
 
-    void setupConnection(ThingSetupInfo *info);
+    QModbusReply *m_currentReply = nullptr;
+
+    bool m_resetWatchdog = true;
+
 
 };
 
-#endif // INTEGRATIONPLUGINPCELECTRIC_H
+#endif // PCEWALLBOX_H

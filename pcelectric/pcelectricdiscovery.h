@@ -46,7 +46,6 @@ public:
     typedef struct Result {
         QString serialNumber;
         QString firmwareRevision;
-        QString hardwareRevision;
         NetworkDeviceInfo networkDeviceInfo;
     } Result;
 

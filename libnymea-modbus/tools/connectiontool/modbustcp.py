@@ -18,6 +18,74 @@ from .toolcommon import *
 
 ##############################################################
 
+def writePropertyGetSetDataUnitDeclarationsTcp(fileDescriptor, registerDefinitions):
+    for registerDefinition in registerDefinitions:
+        propertyName = registerDefinition['id']
+        propertyTyp = getCppDataType(registerDefinition)
+        if 'unit' in registerDefinition and registerDefinition['unit'] != '':
+            writeLine(fileDescriptor, '    /* %s [%s] - Address: %s, Size: %s */' % (registerDefinition['description'], registerDefinition['unit'], registerDefinition['address'], registerDefinition['size']))
+        else:
+            writeLine(fileDescriptor, '    /* %s - Address: %s, Size: %s */' % (registerDefinition['description'], registerDefinition['address'], registerDefinition['size']))
+
+        # Check if we require a read method
+        if 'R' in registerDefinition['access']:
+            writeLine(fileDescriptor, '    QModbusDataUnit %sDataUnit() const;' % (propertyName))
+
+        # Check if we require a write method
+        if 'W' in registerDefinition['access']:
+            writeLine(fileDescriptor, '    QModbusDataUnit set%sDataUnit(%s %s);' % (propertyName[0].upper() + propertyName[1:], propertyTyp, propertyName))
+
+        writeLine(fileDescriptor)
+
+
+def writePropertyGetSetDataUnitImplementationsTcp(fileDescriptor, className, registerDefinitions):
+    for registerDefinition in registerDefinitions:
+        propertyName = registerDefinition['id']
+        propertyTyp = getCppDataType(registerDefinition)
+
+        # Check if we require a read method
+        if 'R' in registerDefinition['access']:
+
+            writeLine(fileDescriptor, 'QModbusDataUnit %s::%sDataUnit() const' % (className, propertyName))
+            writeLine(fileDescriptor, '{')
+
+            # Build request depending on the register type
+            if registerDefinition['registerType'] == 'inputRegister':
+                writeLine(fileDescriptor, '    return QModbusDataUnit(QModbusDataUnit::RegisterType::InputRegisters, %s, %s);' % (registerDefinition['address'], registerDefinition['size']))
+            elif registerDefinition['registerType'] == 'discreteInputs':
+                writeLine(fileDescriptor, '    return QModbusDataUnit(QModbusDataUnit::RegisterType::DiscreteInputs, %s, %s);' % (registerDefinition['address'], registerDefinition['size']))
+            elif registerDefinition['registerType'] == 'coils':
+                writeLine(fileDescriptor, '    return QModbusDataUnit(QModbusDataUnit::RegisterType::Coils, %s, %s);' % (registerDefinition['address'], registerDefinition['size']))
+            else:
+                #Default to holdingRegister
+                writeLine(fileDescriptor, '    return QModbusDataUnit(QModbusDataUnit::RegisterType::HoldingRegisters, %s, %s);' % (registerDefinition['address'], registerDefinition['size']))
+
+            writeLine(fileDescriptor, '}')
+            writeLine(fileDescriptor)
+
+        # Check if we require a write method
+        if 'W' in registerDefinition['access']:
+            writeLine(fileDescriptor, 'QModbusDataUnit %s::set%sDataUnit(%s %s)' % (className, propertyName[0].upper() + propertyName[1:], propertyTyp, propertyName))
+            writeLine(fileDescriptor, '{')
+
+            writeLine(fileDescriptor, '    QVector<quint16> values = %s;' % getConversionToValueMethod(registerDefinition))
+            if registerDefinition['registerType'] == 'holdingRegister':
+                writeLine(fileDescriptor, '    QModbusDataUnit request = QModbusDataUnit(QModbusDataUnit::RegisterType::HoldingRegisters, %s, values.count());' % (registerDefinition['address']))
+            elif registerDefinition['registerType'] == 'coils':
+                writeLine(fileDescriptor, '    QModbusDataUnit request = QModbusDataUnit(QModbusDataUnit::RegisterType::Coils, %s, values.count());' % (registerDefinition['address']))
+            else:
+                logger.warning('Error: invalid register type for writing.')
+                exit(1)
+
+            writeLine(fileDescriptor, '    request.setValues(values);')
+
+            writeLine(fileDescriptor, '    return request;')
+            writeLine(fileDescriptor, '}')
+            writeLine(fileDescriptor)
+
+
+##############################################################
+
 def writePropertyGetSetMethodDeclarationsTcp(fileDescriptor, registerDefinitions):
     for registerDefinition in registerDefinitions:
         propertyName = registerDefinition['id']
@@ -59,19 +127,7 @@ def writePropertyGetSetMethodImplementationsTcp(fileDescriptor, className, regis
         if 'W' in registerDefinition['access']:
             writeLine(fileDescriptor, 'QModbusReply *%s::set%s(%s %s)' % (className, propertyName[0].upper() + propertyName[1:], propertyTyp, propertyName))
             writeLine(fileDescriptor, '{')
-
-            writeLine(fileDescriptor, '    QVector<quint16> values = %s;' % getConversionToValueMethod(registerDefinition))
-            writeLine(fileDescriptor, '    qCDebug(dc%s()) << "--> Write \\"%s\\" register:" << %s << "size:" << %s << values;' % (className, registerDefinition['description'], registerDefinition['address'], registerDefinition['size']))
-            if registerDefinition['registerType'] == 'holdingRegister':
-                writeLine(fileDescriptor, '    QModbusDataUnit request = QModbusDataUnit(QModbusDataUnit::RegisterType::HoldingRegisters, %s, values.count());' % (registerDefinition['address']))
-            elif registerDefinition['registerType'] == 'coils':
-                writeLine(fileDescriptor, '    QModbusDataUnit request = QModbusDataUnit(QModbusDataUnit::RegisterType::Coils, %s, values.count());' % (registerDefinition['address']))
-            else:
-                logger.warning('Error: invalid register type for writing.')
-                exit(1)
-
-            writeLine(fileDescriptor, '    request.setValues(values);')
-            writeLine(fileDescriptor, '    return m_modbusTcpMaster->sendWriteRequest(request, m_slaveId);')
+            writeLine(fileDescriptor, '    return m_modbusTcpMaster->sendWriteRequest(set%sDataUnit(%s), m_slaveId);' % (propertyName[0].upper() + propertyName[1:], propertyName))
             writeLine(fileDescriptor, '}')
             writeLine(fileDescriptor)
 
@@ -414,31 +470,21 @@ def writeBlockUpdateMethodImplementationsTcp(fileDescriptor, className, blockDef
 
 def writeInternalPropertyReadMethodDeclarationsTcp(fileDescriptor, registerDefinitions):
     for registerDefinition in registerDefinitions:
-        propertyName = registerDefinition['id']
-        writeLine(fileDescriptor, '    QModbusReply *read%s();' % (propertyName[0].upper() + propertyName[1:]))
+        if 'R' in registerDefinition['access']:
+            propertyName = registerDefinition['id']
+            writeLine(fileDescriptor, '    QModbusReply *read%s();' % (propertyName[0].upper() + propertyName[1:]))
 
 ##############################################################
 
 def writeInternalPropertyReadMethodImplementationsTcp(fileDescriptor, className, registerDefinitions):
     for registerDefinition in registerDefinitions:
-        propertyName = registerDefinition['id']
-        writeLine(fileDescriptor, 'QModbusReply *%s::read%s()' % (className, propertyName[0].upper() + propertyName[1:]))
-        writeLine(fileDescriptor, '{')
-
-        # Build request depending on the register type
-        if registerDefinition['registerType'] == 'inputRegister':
-            writeLine(fileDescriptor, '    QModbusDataUnit request = QModbusDataUnit(QModbusDataUnit::RegisterType::InputRegisters, %s, %s);' % (registerDefinition['address'], registerDefinition['size']))
-        elif registerDefinition['registerType'] == 'discreteInputs':
-            writeLine(fileDescriptor, '    QModbusDataUnit request = QModbusDataUnit(QModbusDataUnit::RegisterType::DiscreteInputs, %s, %s);' % (registerDefinition['address'], registerDefinition['size']))
-        elif registerDefinition['registerType'] == 'coils':
-            writeLine(fileDescriptor, '    QModbusDataUnit request = QModbusDataUnit(QModbusDataUnit::RegisterType::Coils, %s, %s);' % (registerDefinition['address'], registerDefinition['size']))
-        else:
-            #Default to holdingRegister
-            writeLine(fileDescriptor, '    QModbusDataUnit request = QModbusDataUnit(QModbusDataUnit::RegisterType::HoldingRegisters, %s, %s);' % (registerDefinition['address'], registerDefinition['size']))
-
-        writeLine(fileDescriptor, '    return m_modbusTcpMaster->sendReadRequest(request, m_slaveId);')
-        writeLine(fileDescriptor, '}')
-        writeLine(fileDescriptor)
+        if 'R' in registerDefinition['access']:
+            propertyName = registerDefinition['id']
+            writeLine(fileDescriptor, 'QModbusReply *%s::read%s()' % (className, propertyName[0].upper() + propertyName[1:]))
+            writeLine(fileDescriptor, '{')
+            writeLine(fileDescriptor, '    return m_modbusTcpMaster->sendReadRequest(%sDataUnit(), m_slaveId);' % propertyName)
+            writeLine(fileDescriptor, '}')
+            writeLine(fileDescriptor)
 
 
 ##############################################################

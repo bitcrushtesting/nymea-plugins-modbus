@@ -34,7 +34,6 @@
 
 #include <hardwaremanager.h>
 #include <hardware/electricity.h>
-#include <network/networkdevicediscovery.h>
 
 IntegrationPluginPcElectric::IntegrationPluginPcElectric()
 {
@@ -58,7 +57,7 @@ void IntegrationPluginPcElectric::discoverThings(ThingDiscoveryInfo *info)
     connect(discovery, &PcElectricDiscovery::discoveryFinished, info, [=](){
         foreach (const PcElectricDiscovery::Result &result, discovery->results()) {
 
-            ThingDescriptor descriptor(ev11ThingClassId, "PCE EV11.3", "Serial: " + result.serialNumber + " - " + result.networkDeviceInfo.address().toString());
+            ThingDescriptor descriptor(ev11ThingClassId, "PCE EV11.3 (" + result.serialNumber + ")", "Version: " + result.firmwareRevision + " - " + result.networkDeviceInfo.address().toString());
             qCDebug(dcPcElectric()) << "Discovered:" << descriptor.title() << descriptor.description();
 
             // Check if we already have set up this device
@@ -87,57 +86,85 @@ void IntegrationPluginPcElectric::setupThing(ThingSetupInfo *info)
     Thing *thing = info->thing();
     qCDebug(dcPcElectric()) << "Setup thing" << thing << thing->params();
 
+    if (m_connections.contains(thing)) {
+        qCDebug(dcPcElectric()) << "Reconfiguring existing thing" << thing->name();
+        m_connections.take(thing)->deleteLater();
+
+        if (m_monitors.contains(thing)) {
+            hardwareManager()->networkDeviceDiscovery()->unregisterMonitor(m_monitors.take(thing));
+        }
+    }
+
+    MacAddress macAddress = MacAddress(thing->paramValue(ev11ThingMacAddressParamTypeId).toString());
+    if (!macAddress.isValid()) {
+        qCWarning(dcPcElectric()) << "The configured mac address is not valid" << thing->params();
+        info->finish(Thing::ThingErrorInvalidParameter, QT_TR_NOOP("The MAC address is not known. Please reconfigure the thing."));
+        return;
+    }
+
+    NetworkDeviceMonitor *monitor = hardwareManager()->networkDeviceDiscovery()->registerMonitor(macAddress);
+    m_monitors.insert(thing, monitor);
+
+    connect(info, &ThingSetupInfo::aborted, monitor, [=](){
+        if (m_monitors.contains(thing)) {
+            qCDebug(dcPcElectric()) << "Unregistering monitor because setup has been aborted.";
+            hardwareManager()->networkDeviceDiscovery()->unregisterMonitor(m_monitors.take(thing));
+        }
+    });
+
+    // Only make sure the connection is working in the initial setup, otherwise we let the monitor do the work
+    if (info->isInitialSetup()) {
+        // Continue with setup only if we know that the network device is reachable
+        if (monitor->reachable()) {
+            setupConnection(info);
+        } else {
+            // otherwise wait until we reach the networkdevice before setting up the device
+            qCDebug(dcPcElectric()) << "Network device" << thing->name() << "is not reachable yet. Continue with the setup once reachable.";
+            connect(monitor, &NetworkDeviceMonitor::reachableChanged, info, [=](bool reachable){
+                if (reachable) {
+                    qCDebug(dcPcElectric()) << "Network device" << thing->name() << "is now reachable. Continue with the setup...";
+                    setupConnection(info);
+                }
+            });
+        }
+    } else {
+        setupConnection(info);
+    }
+
+    return;
 }
 
 void IntegrationPluginPcElectric::postSetupThing(Thing *thing)
 {
-//     Q_UNUSED(thing)
-//     qCDebug(dcPcElectric()) << "Post setup thing" << thing->name();
-//     if (!m_refreshTimer) {
-//         m_refreshTimer = hardwareManager()->pluginTimerManager()->registerTimer(2);
-//         connect(m_refreshTimer, &PluginTimer::timeout, this, [this] {
-//             foreach (Thing *thing, myThings()) {
+    qCDebug(dcPcElectric()) << "Post setup thing" << thing->name();
+    if (!m_refreshTimer) {
+        m_refreshTimer = hardwareManager()->pluginTimerManager()->registerTimer(1);
+        connect(m_refreshTimer, &PluginTimer::timeout, this, [this] {
+            foreach (PceWallbox *connection, m_connections) {
+                if (connection->reachable()) {
+                    connection->update();
+                }
+            }
+        });
 
-//                 CionModbusRtuConnection *connection = m_connections.value(thing);
-//                 connection->update();
-
-//                 // The only apparent way to know whether it is charging, is to compare if lastChargingDuration has changed
-//                 // If it didn't change in the last cycle
-//                 qulonglong lastChargingDuration = connection->property("lastChargingDuration").toULongLong();
-//                 thing->setStateValue(cionChargingStateTypeId, connection->chargingDuration() != lastChargingDuration);
-//                 connection->setProperty("lastChargingDuration", connection->chargingDuration());
-
-//                 // Reading the CP signal state to know if the wallbox is reachable.
-//                 // Note that this is also an "update" register, hence being read twice.
-//                 // We'll not actually evaluate the actual results in here because
-//                 // this piece of code should be replaced with the modbus tool internal connected detection when it's ready
-//                 ModbusRtuReply *reply = connection->readCpSignalState();
-//                 connect(reply, &ModbusRtuReply::finished, thing, [reply, thing, this](){
-// //                    qCDebug(dcPcElectric) << "CP signal state reply finished" << reply->error();
-//                     thing->setStateValue(cionConnectedStateTypeId, reply->error() == ModbusRtuReply::NoError);
-
-//                     // The Cion seems to crap out rather often and needs to be reconnected :/
-//                     if (reply->error() == ModbusRtuReply::TimeoutError) {
-//                         QUuid uuid = thing->paramValue(cionThingModbusMasterUuidParamTypeId).toUuid();
-//                         hardwareManager()->modbusRtuResource()->getModbusRtuMaster(uuid)->requestReconnect();
-//                     }
-//                 });
-//             }
-//         });
-
-//         qCDebug(dcPcElectric()) << "Starting refresh timer...";
-//         m_refreshTimer->start();
-//     }
+        qCDebug(dcPcElectric()) << "Starting refresh timer...";
+        m_refreshTimer->start();
+    }
 }
 
 void IntegrationPluginPcElectric::thingRemoved(Thing *thing)
 {
-    Q_UNUSED(thing)
-
     qCDebug(dcPcElectric()) << "Thing removed" << thing->name();
 
-    if (m_connections.contains(thing))
-        m_connections.take(thing)->deleteLater();
+    if (m_connections.contains(thing)) {
+        PceWallbox *connection = m_connections.take(thing);
+        connection->disconnectDevice();
+        connection->deleteLater();
+    }
+
+    // Unregister related hardware resources
+    if (m_monitors.contains(thing))
+        hardwareManager()->networkDeviceDiscovery()->unregisterMonitor(m_monitors.take(thing));
 
     if (myThings().isEmpty() && m_refreshTimer) {
         qCDebug(dcPcElectric()) << "Stopping reconnect timer";
@@ -196,6 +223,49 @@ void IntegrationPluginPcElectric::executeAction(ThingActionInfo *info)
     //     }
     // }
 
-
     Q_ASSERT_X(false, "IntegrationPluginPcElectric::executeAction", QString("Unhandled action: %1").arg(info->action().actionTypeId().toString()).toLocal8Bit());
+}
+
+void IntegrationPluginPcElectric::setupConnection(ThingSetupInfo *info)
+{
+    Thing *thing = info->thing();
+    NetworkDeviceMonitor *monitor = m_monitors.value(thing);
+
+    qCDebug(dcPcElectric()) << "Setting up PCE wallbox finished successfully" << monitor->networkDeviceInfo().address().toString();
+
+    PceWallbox *connection = new PceWallbox(monitor->networkDeviceInfo().address(), 502, 1, this);
+    connect(info, &ThingSetupInfo::aborted, connection, &PceWallbox::deleteLater);
+
+    // Monitor reachability
+    connect(monitor, &NetworkDeviceMonitor::reachableChanged, thing, [=](bool reachable){
+        if (!thing->setupComplete())
+            return;
+
+        qCDebug(dcPcElectric()) << "Network device monitor for" << thing->name() << (reachable ? "is now reachable" : "is not reachable any more" );
+        if (reachable && !thing->stateValue("connected").toBool()) {
+            connection->modbusTcpMaster()->setHostAddress(monitor->networkDeviceInfo().address());
+            connection->connectDevice();
+        } else if (!reachable) {
+            // Note: We disable autoreconnect explicitly and we will
+            // connect the device once the monitor says it is reachable again
+            connection->disconnectDevice();
+        }
+    });
+
+    // Connection reachability
+    connect(connection, &PceWallbox::reachableChanged, thing, [thing](bool reachable){
+        qCDebug(dcPcElectric()) << "Reachable changed to" << reachable << "for" << thing;
+        thing->setStateValue("connected", reachable);
+    });
+
+    connect(connection, &PceWallbox::updateFinished, thing, [thing, connection](){
+        qCDebug(dcPcElectric()) << "Update finished for" << thing << connection;
+    });
+
+    m_connections.insert(thing, connection);
+    info->finish(Thing::ThingErrorNoError);
+
+    // Connect reight the way if the monitor indicates reachable, otherwise the connect will handle the connect later
+    if (monitor->reachable())
+        connection->connectDevice();
 }

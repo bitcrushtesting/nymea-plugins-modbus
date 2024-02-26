@@ -87,26 +87,36 @@ void PcElectricDiscovery::checkNetworkDevice(const NetworkDeviceInfo &networkDev
             // Parse the mac address from the registers and compair with the network device info mac address.
             // If they match, we most likly found a PCE wallbox
 
-            QByteArray rawData;
-            QDataStream stream(&rawData, QIODevice::WriteOnly);
+            QByteArray macRawData;
+            QDataStream stream(&macRawData, QIODevice::WriteOnly);
             for (int i = 0; i < connection->macAddress().count(); i++)
                 stream << connection->macAddress().at(i);
 
-            MacAddress registerMacAddress(rawData);
-            qCDebug(dcPcElectric()) << "Fetched mac address" << registerMacAddress;
+            MacAddress registerMacAddress(macRawData);
+            qCDebug(dcPcElectric()) << "Fetched mac address" << macRawData.toHex() << registerMacAddress;
 
-            if (registerMacAddress == MacAddress(networkDeviceInfo.macAddress())) {
+            // According to PCE the HW revision must be 0
+            if (registerMacAddress == MacAddress(networkDeviceInfo.macAddress()) && connection->hardwareRevision() == 0) {
+
+                // Parse the serial number
+                QByteArray serialRawData;
+                QDataStream stream(&serialRawData, QIODevice::ReadWrite);
+                stream << static_cast<quint16>(0);
+                for (int i = 0; i < connection->serialNumber().count(); i++)
+                    stream << connection->serialNumber().at(i);
+
+                quint64 serialNumber = serialRawData.toHex().toULongLong(nullptr, 16);
+                qCDebug(dcPcElectric()) << "Serial number" << serialRawData.toHex() << serialNumber;
+
                 Result result;
-                result.serialNumber = QString::number(connection->serialNumber());
+                result.serialNumber = QString::number(serialNumber);
                 result.firmwareRevision = connection->firmwareRevision();
-                result.hardwareRevision = QString::number(connection->hardwareRevision());
                 result.networkDeviceInfo = networkDeviceInfo;
                 m_results.append(result);
 
                 qCInfo(dcPcElectric()) << "Discovery: --> Found"
                                        << "Serial number:" << result.serialNumber
                                        << "Firmware revision:" << result.firmwareRevision
-                                       << "Hardware revision:" << result.hardwareRevision
                                        << result.networkDeviceInfo;
             }
 
@@ -154,6 +164,7 @@ void PcElectricDiscovery::finishDiscovery()
     foreach (EV11ModbusTcpConnection *connection, m_connections)
         cleanupConnection(connection);
 
-    qCInfo(dcPcElectric()) << "Discovery: Finished the discovery process. Found" << m_results.count() << "PCE wallboxes in" << QTime::fromMSecsSinceStartOfDay(durationMilliSeconds).toString("mm:ss.zzz");
+    qCInfo(dcPcElectric()) << "Discovery: Finished the discovery process. Found" << m_results.count()
+                           << "PCE wallboxes in" << QTime::fromMSecsSinceStartOfDay(durationMilliSeconds).toString("mm:ss.zzz");
     emit discoveryFinished();
 }
