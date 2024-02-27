@@ -31,23 +31,27 @@
 #include "pcewallbox.h"
 #include "extern-plugininfo.h"
 
+#include <modbusdatautils.h>
+
 PceWallbox::PceWallbox(const QHostAddress &hostAddress, uint port, quint16 slaveId, QObject *parent)
     : EV11ModbusTcpConnection{hostAddress, port, slaveId, parent}
 {
     // Timer for resetting the heartbeat register (watchdog)
     m_timer.setInterval(30000);
     m_timer.setSingleShot(false);
-    connect(&m_timer, &QTimer::timeout, this, [this](){
-        m_resetWatchdog = true;
-    });
+    connect(&m_timer, &QTimer::timeout, this, &PceWallbox::sendHeartbeat);
 
     connect(this, &EV11ModbusTcpConnection::reachableChanged, this, [this](bool reachable){
         if (!reachable) {
             m_timer.stop();
-            m_resetWatchdog = false;
-            disconnectDevice();
 
-            QTimer::singleShot(2000, this, &EV11ModbusTcpConnection::connectDevice);
+            qDeleteAll(m_queue);
+            m_queue.clear();
+
+            if (m_currentReply) {
+                m_currentReply = nullptr;
+            }
+
         } else {
             initialize();
         }
@@ -57,8 +61,10 @@ PceWallbox::PceWallbox(const QHostAddress &hostAddress, uint port, quint16 slave
         if (success) {
             qCDebug(dcPcElectric()) << "Connection initialized successfully" << m_modbusTcpMaster->hostAddress().toString();
             m_timer.start();
-            m_resetWatchdog = true;
+
+            sendHeartbeat();
             update();
+
         } else {
             qCWarning(dcPcElectric()) << "Connection initialization failed for" << m_modbusTcpMaster->hostAddress().toString();
         }
@@ -70,35 +76,131 @@ bool PceWallbox::update()
     if (!reachable())
         return false;
 
-    if (m_currentReply)
-        return false;
+    // Make sure we only have one update call in the queue
+    foreach (QueuedModbusReply *r, m_queue) {
+        if (r->dataUnit().startAddress() == readBlockInitInfosDataUnit().startAddress()) {
+            return true;
+        }
+    }
 
-    // No need to reset the watchdog...let's just update
-    if (!m_resetWatchdog)
-        return EV11ModbusTcpConnection::update();
+    QueuedModbusReply *reply = new QueuedModbusReply(QueuedModbusReply::RequestTypeRead, readBlockStatusDataUnit(), this);
+    connect(reply, &QueuedModbusReply::finished, reply, &QueuedModbusReply::deleteLater);
+    connect(reply, &QueuedModbusReply::finished, this, [this, reply](){
 
-    // First reset the watchdog, then update...
-    m_currentReply = setHeartbeat(1);
-    connect(m_currentReply, &QModbusReply::finished, this, [this](){
-        QModbusResponse response = m_currentReply->rawResult();
+        if (m_currentReply == reply)
+            m_currentReply = nullptr;
 
-        if (m_currentReply->error() == QModbusDevice::NoError) {
-            qCDebug(dcPcElectric()) << "Write \"Heartbeat (write < 60s to keep alive)\" finished successfully.";
-        } else {
-            if (m_currentReply->error() == QModbusDevice::ProtocolError && response.isException()) {
-                qCWarning(dcPcElectric()) << "Modbus reply error occurred while writing \"Heartbeat (write < 60s to keep alive)\" register" << m_currentReply->errorString() << ModbusDataUtils::exceptionCodeToString(response.exceptionCode());
-            } else {
-                qCWarning(dcPcElectric()) << "Modbus reply error occurred while writing \"Heartbeat (write < 60s to keep alive)\" register" << m_currentReply->errorString();
-            }
+        if (reply->error() != QModbusDevice::NoError) {
+            emit updateFinished();
+            sendNextRequest();
+            return;
         }
 
-        m_resetWatchdog = false;
+        const QModbusDataUnit unit = reply->reply()->result();
+        const QVector<quint16> blockValues = unit.values();
+        processBlockStatusRegisterValues(blockValues);
 
-        m_currentReply->deleteLater();
-        m_currentReply = nullptr;
-
-        EV11ModbusTcpConnection::update();
+        emit updateFinished();
+        sendNextRequest();
     });
 
+    enqueueRequest(reply);
     return true;
+}
+
+QueuedModbusReply *PceWallbox::setChargingCurrent(quint16 chargingCurrent)
+{
+    QueuedModbusReply *reply = new QueuedModbusReply(QueuedModbusReply::RequestTypeWrite, setChargingCurrentDataUnit(chargingCurrent), this);
+
+    connect(reply, &QueuedModbusReply::finished, reply, &QueuedModbusReply::deleteLater);
+    connect(reply, &QueuedModbusReply::finished, this, [this, reply](){
+        if (m_currentReply == reply)
+            m_currentReply = nullptr;
+
+        sendNextRequest();
+        return;
+    });
+
+    enqueueRequest(reply, true);
+    return reply;
+}
+
+void PceWallbox::sendHeartbeat()
+{
+    QueuedModbusReply *reply = new QueuedModbusReply(QueuedModbusReply::RequestTypeWrite, setHeartbeatDataUnit(m_heartbeat++), this);
+
+    connect(reply, &QueuedModbusReply::finished, reply, &QueuedModbusReply::deleteLater);
+
+    connect(reply, &QueuedModbusReply::finished, this, [this, reply](){
+        if (m_currentReply == reply)
+            m_currentReply = nullptr;
+
+        if (reply->error() != QModbusDevice::NoError) {
+            qCWarning(dcPcElectric()) << "Failed to send heartbeat to" << m_modbusTcpMaster->hostAddress().toString() << reply->errorString();
+        } else {
+            qCDebug(dcPcElectric()) << "Successfully sent heartbeat to" << m_modbusTcpMaster->hostAddress().toString();
+        }
+
+        sendNextRequest();
+        return;
+    });
+
+    enqueueRequest(reply, true);
+}
+
+void PceWallbox::sendNextRequest()
+{
+    if (m_queue.isEmpty())
+        return;
+
+    if (m_currentReply)
+        return;
+
+    m_currentReply = m_queue.dequeue();
+    switch(m_currentReply->requestType()) {
+    case QueuedModbusReply::RequestTypeRead:
+        qCDebug(dcPcElectric()) << "--> Reading" << ModbusDataUtils::registerTypeToString(m_currentReply->dataUnit().registerType())
+                                << "register:" << m_currentReply->dataUnit().startAddress()
+                                << "length" << m_currentReply->dataUnit().valueCount();
+        m_currentReply->setReply(m_modbusTcpMaster->sendReadRequest(m_currentReply->dataUnit(), m_slaveId));
+        break;
+    case QueuedModbusReply::RequestTypeWrite:
+        qCDebug(dcPcElectric()) << "--> Writing" << ModbusDataUtils::registerTypeToString(m_currentReply->dataUnit().registerType())
+                                << "register:" << m_currentReply->dataUnit().startAddress()
+                                << "length:" << m_currentReply->dataUnit().valueCount()
+                                << "values:" << m_currentReply->dataUnit().values();
+        m_currentReply->setReply(m_modbusTcpMaster->sendWriteRequest(m_currentReply->dataUnit(), m_slaveId));
+        break;
+    }
+
+    if (!m_currentReply->reply()) {
+        qCWarning(dcPcElectric()) << "Error occurred while sending" << m_currentReply->requestType()
+                                  << ModbusDataUtils::registerTypeToString(m_currentReply->dataUnit().registerType())
+                                  << "register:" << m_currentReply->dataUnit().startAddress()
+                                  << "length:" << m_currentReply->dataUnit().valueCount()
+                                  << "to" << m_modbusTcpMaster->hostAddress().toString() << m_modbusTcpMaster->errorString();
+        m_currentReply->deleteLater();
+        m_currentReply = nullptr;
+        sendNextRequest();
+        return;
+    }
+
+    if (m_currentReply->reply()->isFinished()) {
+        qCWarning(dcPcElectric()) << "Reply immediatly finished";
+        m_currentReply->deleteLater();
+        m_currentReply = nullptr;
+        sendNextRequest();
+        return;
+    }
+}
+
+void PceWallbox::enqueueRequest(QueuedModbusReply *reply, bool prepend)
+{
+    if (prepend) {
+        m_queue.prepend(reply);
+    } else {
+        m_queue.enqueue(reply);
+    }
+
+    sendNextRequest();
 }

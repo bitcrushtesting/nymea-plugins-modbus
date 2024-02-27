@@ -28,38 +28,50 @@
 *
 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-#ifndef PCEWALLBOX_H
-#define PCEWALLBOX_H
+#ifndef QUEUEDMODBUSREPLY_H
+#define QUEUEDMODBUSREPLY_H
 
-#include <QTimer>
-#include <QQueue>
 #include <QObject>
+#include <QModbusReply>
+#include <QModbusDataUnit>
 
-#include <queuedmodbusreply.h>
-
-#include "ev11modbustcpconnection.h"
-
-class PceWallbox : public EV11ModbusTcpConnection
+class QueuedModbusReply : public QObject
 {
     Q_OBJECT
 public:
-    explicit PceWallbox(const QHostAddress &hostAddress, uint port, quint16 slaveId, QObject *parent = nullptr);
+    enum RequestType {
+        RequestTypeRead,
+        RequestTypeWrite
+    };
+    Q_ENUM(RequestType)
 
-    bool update() override;
+    explicit QueuedModbusReply(QObject *parent = nullptr);
+    explicit QueuedModbusReply(RequestType requestType, QModbusDataUnit dataUnit, QObject *parent = nullptr);
 
-    QueuedModbusReply *setChargingCurrent(quint16 chargingCurrent); // mA
+    ~QueuedModbusReply();
 
-private slots:
-    void sendHeartbeat();
+    RequestType requestType() const;
+    void setRequestType(RequestType requestType);
+
+    QModbusDataUnit dataUnit() const;
+    void setQMOdbusDataUnit(const QModbusDataUnit &dataUnit);
+
+    // Available once the request will be sent to the modbus slave
+    QModbusReply *reply() const;
+    void setReply(QModbusReply *reply);
+
+    QModbusDevice::Error error() const;
+    QString errorString() const;
+
+signals:
+    void finished();
+    void errorOccurred(QModbusDevice::Error error);
 
 private:
-    QTimer m_timer;
-    quint16 m_heartbeat = 1;
-    QueuedModbusReply *m_currentReply = nullptr;
-    QQueue<QueuedModbusReply *> m_queue;
+    RequestType m_requestType = RequestTypeRead;
+    QModbusDataUnit m_dataUnit;
+    QModbusReply *m_reply = nullptr;
 
-    void sendNextRequest();
-    void enqueueRequest(QueuedModbusReply *reply, bool prepend = false);
 };
 
-#endif // PCEWALLBOX_H
+#endif // QUEUEDMODBUSREPLY_H

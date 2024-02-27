@@ -1,4 +1,4 @@
-# Copyright (C) 2021 - 2023 nymea GmbH <developer@nymea.io>
+# Copyright (C) 2021 - 2024 nymea GmbH <developer@nymea.io>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -130,6 +130,134 @@ def writePropertyGetSetMethodImplementationsTcp(fileDescriptor, className, regis
             writeLine(fileDescriptor, '    return m_modbusTcpMaster->sendWriteRequest(set%sDataUnit(%s), m_slaveId);' % (propertyName[0].upper() + propertyName[1:], propertyName))
             writeLine(fileDescriptor, '}')
             writeLine(fileDescriptor)
+
+
+##############################################################
+
+def writeInternalPropertyReadMethodDeclarationsTcp(fileDescriptor, registerDefinitions):
+    for registerDefinition in registerDefinitions:
+        if 'R' in registerDefinition['access']:
+            propertyName = registerDefinition['id']
+            writeLine(fileDescriptor, '    QModbusReply *read%s();' % (propertyName[0].upper() + propertyName[1:]))
+
+##############################################################
+
+def writeInternalPropertyReadMethodImplementationsTcp(fileDescriptor, className, registerDefinitions):
+    for registerDefinition in registerDefinitions:
+        if 'R' in registerDefinition['access']:
+            propertyName = registerDefinition['id']
+            writeLine(fileDescriptor, 'QModbusReply *%s::read%s()' % (className, propertyName[0].upper() + propertyName[1:]))
+            writeLine(fileDescriptor, '{')
+            writeLine(fileDescriptor, '    return m_modbusTcpMaster->sendReadRequest(%sDataUnit(), m_slaveId);' % propertyName)
+            writeLine(fileDescriptor, '}')
+            writeLine(fileDescriptor)
+
+
+##############################################################
+
+def writeInternalBlockReadDataUnitDeclarationsTcp(fileDescriptor, blockDefinitions):
+    for blockDefinition in blockDefinitions:
+        blockName = blockDefinition['id']
+        blockRegisters = blockDefinition['registers']
+        blockStartAddress = 0
+        registerCount = 0
+        blockSize = 0
+
+        for i, blockRegister in enumerate(blockRegisters):
+            if i == 0:
+                blockStartAddress = blockRegister['address']
+
+            registerCount += 1
+            blockSize += blockRegister['size']
+
+        writeLine(fileDescriptor, '    /* Data unit describing read block request from start addess %s with size of %s registers containing following %s properties:' % (blockStartAddress, blockSize, registerCount))
+        for i, registerDefinition in enumerate(blockRegisters):
+            if 'unit' in registerDefinition and registerDefinition['unit'] != '':
+                writeLine(fileDescriptor, '     - %s [%s] - Address: %s, Size: %s' % (registerDefinition['description'], registerDefinition['unit'], registerDefinition['address'], registerDefinition['size']))
+            else:
+                writeLine(fileDescriptor, '     - %s - Address: %s, Size: %s' % (registerDefinition['description'], registerDefinition['address'], registerDefinition['size']))
+        writeLine(fileDescriptor, '    */' )
+        writeLine(fileDescriptor, '    QModbusDataUnit readBlock%sDataUnit() const;' % (blockName[0].upper() + blockName[1:]))
+        writeLine(fileDescriptor)
+
+
+##############################################################
+
+def writeInternalBlockReadDataUnitImplementationsTcp(fileDescriptor, className, blockDefinitions):
+    for blockDefinition in blockDefinitions:
+        blockName = blockDefinition['id']
+        blockRegisters = blockDefinition['registers']
+        blockStartAddress = 0
+        registerCount = 0
+        blockSize = 0
+        registerType = ""
+
+        for i, blockRegister in enumerate(blockRegisters):
+            if i == 0:
+                blockStartAddress = blockRegister['address']
+                registerType = blockRegister['registerType']
+
+            registerCount += 1
+            blockSize += blockRegister['size']
+
+
+        writeLine(fileDescriptor, 'QModbusDataUnit %s::readBlock%sDataUnit() const' % (className, blockName[0].upper() + blockName[1:]))
+        writeLine(fileDescriptor, '{')
+
+        # Build request depending on the register type
+        if registerType == 'inputRegister':
+            writeLine(fileDescriptor, '    return QModbusDataUnit(QModbusDataUnit::RegisterType::InputRegisters, %s, %s);' % (blockStartAddress, blockSize))
+        elif registerType == 'discreteInputs':
+            writeLine(fileDescriptor, '    return QModbusDataUnit(QModbusDataUnit::RegisterType::DiscreteInputs, %s, %s);' % (blockStartAddress, blockSize))
+        elif registerType == 'coils':
+            writeLine(fileDescriptor, '    return QModbusDataUnit(QModbusDataUnit::RegisterType::Coils, %s, %s);' % (blockStartAddress, blockSize))
+        else:
+            #Default to holdingRegister
+            writeLine(fileDescriptor, '    return QModbusDataUnit(QModbusDataUnit::RegisterType::HoldingRegisters, %s, %s);' % (blockStartAddress, blockSize))
+
+        writeLine(fileDescriptor, '}')
+        writeLine(fileDescriptor)
+
+
+##############################################################
+
+def writeInternalBlockReadMethodDeclarationsTcp(fileDescriptor, blockDefinitions):
+    for blockDefinition in blockDefinitions:
+        blockName = blockDefinition['id']
+        blockRegisters = blockDefinition['registers']
+        blockStartAddress = 0
+        registerCount = 0
+        blockSize = 0
+
+        for i, blockRegister in enumerate(blockRegisters):
+            if i == 0:
+                blockStartAddress = blockRegister['address']
+                registerType = blockRegister['registerType']
+
+            registerCount += 1
+            blockSize += blockRegister['size']
+
+        writeLine(fileDescriptor, '    /* Read block from start addess %s with size of %s registers containing following %s properties:' % (blockStartAddress, blockSize, registerCount))
+        for i, registerDefinition in enumerate(blockRegisters):
+            if 'unit' in registerDefinition and registerDefinition['unit'] != '':
+                writeLine(fileDescriptor, '     - %s [%s] - Address: %s, Size: %s' % (registerDefinition['description'], registerDefinition['unit'], registerDefinition['address'], registerDefinition['size']))
+            else:
+                writeLine(fileDescriptor, '     - %s - Address: %s, Size: %s' % (registerDefinition['description'], registerDefinition['address'], registerDefinition['size']))
+        writeLine(fileDescriptor, '    */' )
+        writeLine(fileDescriptor, '    QModbusReply *readBlock%s();' % (blockName[0].upper() + blockName[1:]))
+        writeLine(fileDescriptor)
+
+##############################################################
+
+def writeInternalBlockReadMethodImplementationsTcp(fileDescriptor, className, blockDefinitions):
+    for blockDefinition in blockDefinitions:
+        blockName = blockDefinition['id']
+        writeLine(fileDescriptor, 'QModbusReply *%s::readBlock%s()' % (className, blockName[0].upper() + blockName[1:]))
+        writeLine(fileDescriptor, '{')
+        writeLine(fileDescriptor, '    return m_modbusTcpMaster->sendReadRequest(readBlock%sDataUnit(), m_slaveId);' % (blockName[0].upper() + blockName[1:]))
+        writeLine(fileDescriptor, '}')
+        writeLine(fileDescriptor)
+
 
 ##############################################################
 
@@ -348,19 +476,7 @@ def writeBlockUpdateMethodImplementationsTcp(fileDescriptor, className, blockDef
                 writeLine(fileDescriptor, '        m_currentInitReply = nullptr;')
                 writeLine(fileDescriptor)
                 writeLine(fileDescriptor, '        const QVector<quint16> blockValues = unit.values();')
-                writeLine(fileDescriptor, '        qCDebug(dc%s()) << "<-- Response from reading init block \\"%s\\" register" << %s << "size:" << %s << blockValues;' % (className, blockName, blockStartAddress, blockSize))
-                writeLine(fileDescriptor, '        if (blockValues.size() == %s) {' % (blockSize))
-
-                # Start parsing the registers using offsets
-                offset = 0
-                for i, blockRegister in enumerate(blockRegisters):
-                    propertyName = blockRegister['id']
-                    writeLine(fileDescriptor, '            process%sRegisterValues(blockValues.mid(%s, %s));' % (propertyName[0].upper() + propertyName[1:], offset, blockRegister['size']))
-                    offset += blockRegister['size']
-
-                writeLine(fileDescriptor, '        } else {')
-                writeLine(fileDescriptor, '            qCWarning(dc%s()) << "Reading from \\"%s\\" block registers" << %s << "size:" << %s << "returned different size than requested. Ignoring incomplete data" << blockValues;' % (className, blockName, blockStartAddress, blockSize))
-                writeLine(fileDescriptor, '        }')
+                writeLine(fileDescriptor, '        processBlock%sRegisterValues(blockValues);' % (blockName[0].upper() + blockName[1:]))
                 writeLine(fileDescriptor)
                 writeLine(fileDescriptor, '        if (!verifyInitFinished())')
                 writeLine(fileDescriptor, '            QTimer::singleShot(%s, this, &%s::sendNextQueuedInitRequest);' % (queuedRequestsDelay, className))
@@ -391,23 +507,11 @@ def writeBlockUpdateMethodImplementationsTcp(fileDescriptor, className, blockDef
                 writeLine(fileDescriptor, '        if (m_currentUpdateReply->error() == QModbusDevice::NoError) {')
                 writeLine(fileDescriptor, '            const QModbusDataUnit unit = m_currentUpdateReply->result();')
                 writeLine(fileDescriptor, '            const QVector<quint16> blockValues = unit.values();')
-                writeLine(fileDescriptor, '            qCDebug(dc%s()) << "<-- Response from reading block \\"%s\\" register" << %s << "size:" << %s << blockValues;' % (className, blockName, blockStartAddress, blockSize))
-                writeLine(fileDescriptor, '            if (blockValues.size() == %s) {' % (blockSize))
-
-                # Start parsing the registers using offsets
-                offset = 0
-                for i, blockRegister in enumerate(blockRegisters):
-                    propertyName = blockRegister['id']
-                    writeLine(fileDescriptor, '                process%sRegisterValues(blockValues.mid(%s, %s));' % (propertyName[0].upper() + propertyName[1:], offset, blockRegister['size']))
-                    offset += blockRegister['size']
-
-                writeLine(fileDescriptor, '            } else {')
-                writeLine(fileDescriptor, '                qCWarning(dc%s()) << "Reading from \\"%s\\" block registers" << %s << "size:" << %s << "returned different size than requested. Ignoring incomplete data" << blockValues;' % (className, blockName, blockStartAddress, blockSize))
-                writeLine(fileDescriptor, '            }')
-                writeLine(fileDescriptor, '        m_currentUpdateReply->deleteLater(); // Broadcast reply returns immediatly')
-                writeLine(fileDescriptor, '        m_currentUpdateReply = nullptr;')
-                writeLine(fileDescriptor, '        if (!verifyUpdateFinished())')
-                writeLine(fileDescriptor, '            QTimer::singleShot(%s, this, &%s::sendNextQueuedRequest);' % (queuedRequestsDelay, className))
+                writeLine(fileDescriptor, '            processBlock%sRegisterValues(blockValues);' % (blockName[0].upper() + blockName[1:]))
+                writeLine(fileDescriptor, '            m_currentUpdateReply->deleteLater(); // Broadcast reply returns immediatly')
+                writeLine(fileDescriptor, '            m_currentUpdateReply = nullptr;')
+                writeLine(fileDescriptor, '            if (!verifyUpdateFinished())')
+                writeLine(fileDescriptor, '                QTimer::singleShot(%s, this, &%s::sendNextQueuedRequest);' % (queuedRequestsDelay, className))
                 writeLine(fileDescriptor)
                 writeLine(fileDescriptor, '        }')
                 writeLine(fileDescriptor, '    });')
@@ -438,19 +542,7 @@ def writeBlockUpdateMethodImplementationsTcp(fileDescriptor, className, blockDef
             writeLine(fileDescriptor, '        if (reply->error() == QModbusDevice::NoError) {')
             writeLine(fileDescriptor, '            const QModbusDataUnit unit = reply->result();')
             writeLine(fileDescriptor, '            const QVector<quint16> blockValues = unit.values();')
-            writeLine(fileDescriptor, '            qCDebug(dc%s()) << "<-- Response from reading block \\"%s\\" register" << %s << "size:" << %s << blockValues;' % (className, blockName, blockStartAddress, blockSize))
-            writeLine(fileDescriptor, '            if (blockValues.size() == %s) {' % (blockSize))
-
-            # Start parsing the registers using offsets
-            offset = 0
-            for i, blockRegister in enumerate(blockRegisters):
-                propertyName = blockRegister['id']
-                writeLine(fileDescriptor, '                process%sRegisterValues(blockValues.mid(%s, %s));' % (propertyName[0].upper() + propertyName[1:], offset, blockRegister['size']))
-                offset += blockRegister['size']
-
-            writeLine(fileDescriptor, '            } else {')
-            writeLine(fileDescriptor, '                qCWarning(dc%s()) << "Reading from \\"%s\\" block registers" << %s << "size:" << %s << "returned different size than requested. Ignoring incomplete data" << blockValues;' % (className, blockName, blockStartAddress, blockSize))
-            writeLine(fileDescriptor, '            }')
+            writeLine(fileDescriptor, '            processBlock%sRegisterValues(blockValues);' % (blockName[0].upper() + blockName[1:]))
             writeLine(fileDescriptor, '        }')
             writeLine(fileDescriptor, '    });')
             writeLine(fileDescriptor)
@@ -462,95 +554,6 @@ def writeBlockUpdateMethodImplementationsTcp(fileDescriptor, className, blockDef
             writeLine(fileDescriptor, '            qCWarning(dc%s()) << "Modbus reply error occurred while updating block \\"%s\\" registers" << error << reply->errorString();' % (className, blockName))
             writeLine(fileDescriptor, '        }')
             writeLine(fileDescriptor, '    });')
-
-        writeLine(fileDescriptor, '}')
-        writeLine(fileDescriptor)
-
-##############################################################
-
-def writeInternalPropertyReadMethodDeclarationsTcp(fileDescriptor, registerDefinitions):
-    for registerDefinition in registerDefinitions:
-        if 'R' in registerDefinition['access']:
-            propertyName = registerDefinition['id']
-            writeLine(fileDescriptor, '    QModbusReply *read%s();' % (propertyName[0].upper() + propertyName[1:]))
-
-##############################################################
-
-def writeInternalPropertyReadMethodImplementationsTcp(fileDescriptor, className, registerDefinitions):
-    for registerDefinition in registerDefinitions:
-        if 'R' in registerDefinition['access']:
-            propertyName = registerDefinition['id']
-            writeLine(fileDescriptor, 'QModbusReply *%s::read%s()' % (className, propertyName[0].upper() + propertyName[1:]))
-            writeLine(fileDescriptor, '{')
-            writeLine(fileDescriptor, '    return m_modbusTcpMaster->sendReadRequest(%sDataUnit(), m_slaveId);' % propertyName)
-            writeLine(fileDescriptor, '}')
-            writeLine(fileDescriptor)
-
-
-##############################################################
-
-def writeInternalBlockReadMethodDeclarationsTcp(fileDescriptor, blockDefinitions):
-    for blockDefinition in blockDefinitions:
-        blockName = blockDefinition['id']
-        blockRegisters = blockDefinition['registers']
-        blockStartAddress = 0
-        registerCount = 0
-        blockSize = 0
-        registerType = ""
-
-        for i, blockRegister in enumerate(blockRegisters):
-            if i == 0:
-                blockStartAddress = blockRegister['address']
-                registerType = blockRegister['registerType']
-
-            registerCount += 1
-            blockSize += blockRegister['size']
-
-        writeLine(fileDescriptor, '    /* Read block from start addess %s with size of %s registers containing following %s properties:' % (blockStartAddress, blockSize, registerCount))
-        for i, registerDefinition in enumerate(blockRegisters):
-            if 'unit' in registerDefinition and registerDefinition['unit'] != '':
-                writeLine(fileDescriptor, '     - %s [%s] - Address: %s, Size: %s' % (registerDefinition['description'], registerDefinition['unit'], registerDefinition['address'], registerDefinition['size']))
-            else:
-                writeLine(fileDescriptor, '     - %s - Address: %s, Size: %s' % (registerDefinition['description'], registerDefinition['address'], registerDefinition['size']))
-        writeLine(fileDescriptor, '    */' )
-        writeLine(fileDescriptor, '    QModbusReply *readBlock%s();' % (blockName[0].upper() + blockName[1:]))
-        writeLine(fileDescriptor)
-
-##############################################################
-
-def writeInternalBlockReadMethodImplementationsTcp(fileDescriptor, className, blockDefinitions):
-    for blockDefinition in blockDefinitions:
-        blockName = blockDefinition['id']
-        blockRegisters = blockDefinition['registers']
-        blockStartAddress = 0
-        registerCount = 0
-        blockSize = 0
-        registerType = ""
-
-        for i, blockRegister in enumerate(blockRegisters):
-            if i == 0:
-                blockStartAddress = blockRegister['address']
-                registerType = blockRegister['registerType']
-
-            registerCount += 1
-            blockSize += blockRegister['size']
-
-
-        writeLine(fileDescriptor, 'QModbusReply *%s::readBlock%s()' % (className, blockName[0].upper() + blockName[1:]))
-        writeLine(fileDescriptor, '{')
-
-        # Build request depending on the register type
-        if registerType == 'inputRegister':
-            writeLine(fileDescriptor, '    QModbusDataUnit request = QModbusDataUnit(QModbusDataUnit::RegisterType::InputRegisters, %s, %s);' % (blockStartAddress, blockSize))
-        elif registerType == 'discreteInputs':
-            writeLine(fileDescriptor, '    QModbusDataUnit request = QModbusDataUnit(QModbusDataUnit::RegisterType::DiscreteInputs, %s, %s);' % (blockStartAddress, blockSize))
-        elif registerType == 'coils':
-            writeLine(fileDescriptor, '    QModbusDataUnit request = QModbusDataUnit(QModbusDataUnit::RegisterType::Coils, %s, %s);' % (blockStartAddress, blockSize))
-        else:
-            #Default to holdingRegister
-            writeLine(fileDescriptor, '    QModbusDataUnit request = QModbusDataUnit(QModbusDataUnit::RegisterType::HoldingRegisters, %s, %s);' % (blockStartAddress, blockSize))
-
-        writeLine(fileDescriptor, '    return m_modbusTcpMaster->sendReadRequest(request, m_slaveId);')
 
         writeLine(fileDescriptor, '}')
         writeLine(fileDescriptor)
@@ -765,20 +768,7 @@ def writeInitMethodImplementationTcp(fileDescriptor, className, registerDefiniti
                     writeLine(fileDescriptor)
                     writeLine(fileDescriptor, '        const QModbusDataUnit unit = reply->result();')
                     writeLine(fileDescriptor, '        const QVector<quint16> blockValues = unit.values();')
-                    writeLine(fileDescriptor, '        qCDebug(dc%s()) << "<-- Response from reading init block \\"%s\\" register" << %s << "size:" << %s << blockValues;' % (className, blockName, blockStartAddress, blockSize))
-                    writeLine(fileDescriptor, '        if (blockValues.size() == %s) {' % (blockSize))
-
-                    # Start parsing the registers using offsets
-                    offset = 0
-                    for i, blockRegister in enumerate(blockRegisters):
-                        propertyName = blockRegister['id']
-                        propertyTyp = getCppDataType(blockRegister)
-                        writeLine(fileDescriptor, '            process%sRegisterValues(blockValues.mid(%s, %s));' % (propertyName[0].upper() + propertyName[1:], offset, blockRegister['size']))
-                        offset += blockRegister['size']
-
-                    writeLine(fileDescriptor, '        } else {')
-                    writeLine(fileDescriptor, '            qCWarning(dc%s()) << "Reading from \\"%s\\" block registers" << %s << "size:" << %s << "returned different size than requested. Ignoring incomplete data" << blockValues;' % (className, blockName, blockStartAddress, blockSize))
-                    writeLine(fileDescriptor, '        }')
+                    writeLine(fileDescriptor, '        processBlock%sRegisterValues(blockValues);' % (blockName[0].upper() + blockName[1:]))
                     writeLine(fileDescriptor, '        verifyInitFinished();')
                     writeLine(fileDescriptor, '    });')
                     writeLine(fileDescriptor)
@@ -954,21 +944,7 @@ def writeUpdateMethodTcp(fileDescriptor, className, registerDefinitions, blockDe
                     writeLine(fileDescriptor)
                     writeLine(fileDescriptor, '        const QModbusDataUnit unit = reply->result();')
                     writeLine(fileDescriptor, '        const QVector<quint16> blockValues = unit.values();')
-                    writeLine(fileDescriptor, '        qCDebug(dc%s()) << "<-- Response from reading block \\"%s\\" register" << %s << "size:" << %s << blockValues;' % (className, blockName, blockStartAddress, blockSize))
-                    writeLine(fileDescriptor, '        if (blockValues.size() == %s) {' % (blockSize))
-
-                    # Start parsing the registers using offsets
-                    offset = 0
-                    for i, blockRegister in enumerate(blockRegisters):
-                        propertyName = blockRegister['id']
-                        propertyTyp = getCppDataType(blockRegister)
-                        writeLine(fileDescriptor, '            process%sRegisterValues(blockValues.mid(%s, %s));' % (propertyName[0].upper() + propertyName[1:], offset, blockRegister['size']))
-                        offset += blockRegister['size']
-
-                    writeLine(fileDescriptor, '        } else {')
-                    writeLine(fileDescriptor, '            qCWarning(dc%s()) << "Reading from \\"%s\\" block registers" << %s << "size:" << %s << "returned different size than requested. Ignoring incomplete data" << blockValues;' % (className, blockName, blockStartAddress, blockSize))
-                    writeLine(fileDescriptor, '        }')
-
+                    writeLine(fileDescriptor, '        processBlock%sRegisterValues(blockValues);' % (blockName[0].upper() + blockName[1:]))
                     writeLine(fileDescriptor, '        verifyUpdateFinished();')
                     writeLine(fileDescriptor, '    });')
                     writeLine(fileDescriptor)

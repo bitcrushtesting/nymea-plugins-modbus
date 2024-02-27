@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021 - 2023 nymea GmbH <developer@nymea.io>
+# Copyright (C) 2021 - 2024 nymea GmbH <developer@nymea.io>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -108,12 +108,21 @@ def writeTcpHeaderFile():
         for blockDefinition in registerJson['blocks']:
             writePropertyGetSetDataUnitDeclarationsTcp(headerFile, blockDefinition['registers'])
 
+    if 'blocks' in registerJson:
+        writeInternalBlockReadDataUnitDeclarationsTcp(headerFile, registerJson['blocks'])
+
+
     # Update methods
     writePropertyUpdateMethodDeclarations(headerFile, registerJson['registers'])
     writeLine(headerFile)
     if 'blocks' in registerJson:
         for blockDefinition in registerJson['blocks']:
             writePropertyUpdateMethodDeclarations(headerFile, blockDefinition['registers'])
+
+    writeLine(headerFile)
+
+    if 'blocks' in registerJson:
+        writePropertyUpdateMethodDeclarations(headerFile, registerJson['blocks'])
 
     writeLine(headerFile)
 
@@ -167,6 +176,8 @@ def writeTcpHeaderFile():
     if 'blocks' in registerJson:
         for blockDefinition in registerJson['blocks']:
             writePropertyProcessMethodDeclaration(headerFile, blockDefinition['registers'])
+
+        writeBlockPropertiesProcessMethodDeclaration(headerFile, registerJson['blocks'])
 
     writeLine(headerFile, '    void handleModbusError(QModbusDevice::Error error);')
     writeLine(headerFile, '    void testReachability();')
@@ -348,6 +359,10 @@ def writeTcpSourceFile():
         for blockDefinition in registerJson['blocks']:
             writePropertyGetSetDataUnitImplementationsTcp(sourceFile, className, blockDefinition['registers'])
 
+    # Get block data unit method
+    if 'blocks' in registerJson:
+        writeInternalBlockReadDataUnitImplementationsTcp(sourceFile, className, registerJson['blocks'])
+
 
     # Write init and update method implementation
     blocks = []
@@ -397,6 +412,8 @@ def writeTcpSourceFile():
     if 'blocks' in registerJson:
         for blockDefinition in registerJson['blocks']:
             writePropertyProcessMethodImplementations(sourceFile, className, blockDefinition['registers'])
+
+        writeBlockPropertiesProcessMethodImplementations(sourceFile, className, registerJson['blocks'])
 
     writeLine(sourceFile, 'void %s::handleModbusError(QModbusDevice::Error error)' % (className))
     writeLine(sourceFile, '{')

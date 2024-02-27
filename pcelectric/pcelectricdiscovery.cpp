@@ -83,7 +83,6 @@ void PcElectricDiscovery::checkNetworkDevice(const NetworkDeviceInfo &networkDev
                 return;
             }
 
-
             // Parse the mac address from the registers and compair with the network device info mac address.
             // If they match, we most likly found a PCE wallbox
 
