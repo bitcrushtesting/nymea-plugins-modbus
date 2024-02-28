@@ -73,6 +73,9 @@ PceWallbox::PceWallbox(const QHostAddress &hostAddress, uint port, quint16 slave
 
 bool PceWallbox::update()
 {
+    if (m_aboutToDelete)
+        return false;
+
     if (!reachable())
         return false;
 
@@ -110,6 +113,9 @@ bool PceWallbox::update()
 
 QueuedModbusReply *PceWallbox::setChargingCurrent(quint16 chargingCurrent)
 {
+    if (m_aboutToDelete)
+        return nullptr;
+
     QueuedModbusReply *reply = new QueuedModbusReply(QueuedModbusReply::RequestTypeWrite, setChargingCurrentDataUnit(chargingCurrent), this);
 
     connect(reply, &QueuedModbusReply::finished, reply, &QueuedModbusReply::deleteLater);
@@ -125,8 +131,30 @@ QueuedModbusReply *PceWallbox::setChargingCurrent(quint16 chargingCurrent)
     return reply;
 }
 
+void PceWallbox::gracefullDeleteLater()
+{
+    // Clean up the queue
+    m_aboutToDelete = true;
+    cleanupQueue();
+
+    m_timer.stop();
+
+    if (!m_currentReply) {
+        qCDebug(dcPcElectric()) << "Deleting object without pending request...";
+        // No pending request, we can close the connection and delete the object
+        disconnect(this, nullptr, nullptr, nullptr);
+        disconnectDevice();
+        deleteLater();
+    } else {
+        qCDebug(dcPcElectric()) << "Pending request, deleting object once the request is finished...";
+    }
+}
+
 void PceWallbox::sendHeartbeat()
 {
+    if (m_aboutToDelete)
+        return;
+
     QueuedModbusReply *reply = new QueuedModbusReply(QueuedModbusReply::RequestTypeWrite, setHeartbeatDataUnit(m_heartbeat++), this);
 
     connect(reply, &QueuedModbusReply::finished, reply, &QueuedModbusReply::deleteLater);
@@ -155,6 +183,13 @@ void PceWallbox::sendNextRequest()
 
     if (m_currentReply)
         return;
+
+    if (m_aboutToDelete) {
+        disconnect(this, nullptr, nullptr, nullptr);
+        disconnectDevice();
+        deleteLater();
+        return;
+    }
 
     m_currentReply = m_queue.dequeue();
     switch(m_currentReply->requestType()) {
@@ -203,4 +238,10 @@ void PceWallbox::enqueueRequest(QueuedModbusReply *reply, bool prepend)
     }
 
     sendNextRequest();
+}
+
+void PceWallbox::cleanupQueue()
+{
+    qDeleteAll(m_queue);
+    m_queue.clear();
 }

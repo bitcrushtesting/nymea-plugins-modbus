@@ -313,16 +313,6 @@ void IntegrationPluginPcElectric::setupConnection(ThingSetupInfo *info)
         thing->setStateValue(ev11SessionEnergyStateTypeId, connection->powerMeter0());
         thing->setStateValue(ev11TemperatureStateTypeId, connection->temperature());
 
-        // ErrorOverheating = 1,
-        //     ErrorDCFaultCurrent = 2,
-        //     ErrorChargingWithVentilation = 3,
-        //     ErrorCPErrorEF = 4,
-        //     ErrorCPErrorBypass = 5,
-        //     ErrorCPErrorDiodFault = 6,
-        //     ErrorDCFaultCurrentCalibrating = 7,
-        //     ErrorDCFaultCurrentCommunication = 8,
-        //     ErrorDCFaultCurrentError = 9
-
         switch (connection->error()) {
         case EV11ModbusTcpConnection::ErrorNoError:
             thing->setStateValue(ev11ErrorStateTypeId, "Kein Fehler aktiv");

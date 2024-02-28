@@ -49,6 +49,13 @@ public:
 
     QueuedModbusReply *setChargingCurrent(quint16 chargingCurrent); // mA
 
+    // Note: the modbus implementation of the wallbox gets stuck if a Modbus request has been sent
+    // and we disconnect the socket before the response has arrived. Only a reboot of the wallbox
+    // fixes the broken communication afterwards. This method waits for the current request before closing the
+    // socket and deletes it self.
+    // IMPORTNAT: do not use the object after this call, this is a temporary workaround
+    void gracefullDeleteLater();
+
 private slots:
     void sendHeartbeat();
 
@@ -57,9 +64,13 @@ private:
     quint16 m_heartbeat = 1;
     QueuedModbusReply *m_currentReply = nullptr;
     QQueue<QueuedModbusReply *> m_queue;
+    bool m_aboutToDelete = false;
+
 
     void sendNextRequest();
     void enqueueRequest(QueuedModbusReply *reply, bool prepend = false);
+
+    void cleanupQueue();
 };
 
 #endif // PCEWALLBOX_H
