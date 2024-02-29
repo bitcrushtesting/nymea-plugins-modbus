@@ -242,8 +242,31 @@ void IntegrationPluginPcElectric::executeAction(ThingActionInfo *info)
         }
         return;
     } else if (info->action().actionTypeId() == ev11DesiredPhaseCountActionTypeId) {
-        thing->setStateValue(ev11DesiredPhaseCountStateTypeId, info->action().paramValue(ev11DesiredPhaseCountActionDesiredPhaseCountParamTypeId).toUInt());
+        uint desiredPhaseCount = info->action().paramValue(ev11DesiredPhaseCountActionDesiredPhaseCountParamTypeId).toUInt();
+        qCDebug(dcPcElectric()) << "Desried phase count changed" << desiredPhaseCount;
+        thing->setStateValue(ev11DesiredPhaseCountStateTypeId, desiredPhaseCount);
         info->finish(Thing::ThingErrorNoError);
+
+        // Update the max charging current according to the new desired phase count
+        if (thing->stateValue(ev11PowerStateTypeId).toBool()) {
+            uint chargingCurrent = thing->stateValue(ev11MaxChargingCurrentStateTypeId).toUInt();
+            quint16 finalChargingCurrent = static_cast<quint16>(chargingCurrent * 1000);
+            if (thing->stateValue(ev11DesiredPhaseCountStateTypeId).toUInt() == 3) {
+                // If 3 phase charging is enabled, we set the first bit
+                finalChargingCurrent |= static_cast<quint16>(1) << 15;
+            }
+
+            qCDebug(dcPcElectric()) << "Writing charging current register" << finalChargingCurrent << "mA";
+            QueuedModbusReply *reply = connection->setChargingCurrent(finalChargingCurrent);
+            connect(reply, &QueuedModbusReply::finished, info, [reply, finalChargingCurrent](){
+                if (reply->error() != QModbusDevice::NoError) {
+                    qCWarning(dcPcElectric()) << "Could not set charging current to" << finalChargingCurrent << "mA" << reply->errorString();
+                    return;
+                }
+
+                qCDebug(dcPcElectric()) << "Successfully set charging current to" << finalChargingCurrent << "mA";
+            });
+        }
         return;
     }
 
@@ -288,11 +311,11 @@ void IntegrationPluginPcElectric::setupConnection(ThingSetupInfo *info)
         qCDebug(dcPcElectric()) << connection;
         if (!connection->phaseAutoSwitch()) {
             // Note: if auto phase switching is disabled, the wallbox forces 3 phase charging
-            thing->setStatePossibleValues(ev11DesiredPhaseCountStateTypeId, { 3 }); // Disable switching to one phase
+            thing->setStatePossibleValues(ev11DesiredPhaseCountStateTypeId, { 3 }); // Disable phase switching (default 3)
             thing->setStateValue(ev11DesiredPhaseCountStateTypeId, 3);
             thing->setStateValue(ev11PhaseCountStateTypeId, 3);
         } else {
-            thing->setStatePossibleValues(ev11DesiredPhaseCountStateTypeId, { 1, 3 }); // Phase switching
+            thing->setStatePossibleValues(ev11DesiredPhaseCountStateTypeId, { 1, 3 }); // Enable phase switching
         }
 
         if (connection->chargingRelayState() != EV11ModbusTcpConnection::ChargingRelayStateNoCharging) {
@@ -307,8 +330,11 @@ void IntegrationPluginPcElectric::setupConnection(ThingSetupInfo *info)
         thing->setStateValue(ev11PluggedInStateTypeId, connection->chargingState() >= PceWallbox::ChargingStateB1 &&
                                                            connection->chargingState() < PceWallbox::ChargingStateError);
 
-
         thing->setStateValue(ev11ChargingStateTypeId, connection->chargingState() == PceWallbox::ChargingStateC2);
+        if (connection->chargingRelayState() != EV11ModbusTcpConnection::ChargingRelayStateNoCharging) {
+            thing->setStateValue(ev11PhaseCountStateTypeId, connection->chargingRelayState() == EV11ModbusTcpConnection::ChargingRelayStateSinglePhase ? 1 : 3);
+        }
+
         thing->setStateValue(ev11CurrentVersionStateTypeId, connection->firmwareRevision());
         thing->setStateValue(ev11SessionEnergyStateTypeId, connection->powerMeter0());
         thing->setStateValue(ev11TemperatureStateTypeId, connection->temperature());
