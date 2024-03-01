@@ -373,6 +373,22 @@ void IntegrationPluginPcElectric::setupConnection(ThingSetupInfo *info)
         }
     });
 
+    connect(thing, &Thing::settingChanged, connection, [thing, connection](const ParamTypeId &paramTypeId, const QVariant &value){
+        if (paramTypeId == ev11SettingsLedBrightnessParamTypeId) {
+            quint16 percentage = value.toUInt();
+            qCDebug(dcPcElectric()) << "Set LED brightness" << percentage << "%";
+            QueuedModbusReply *reply = connection->setLedBrightness(percentage);
+            connect(reply, &QueuedModbusReply::finished, thing, [reply, percentage](){
+                if (reply->error() != QModbusDevice::NoError) {
+                    qCWarning(dcPcElectric()) << "Could not set led brightness to" << percentage << "%" << reply->errorString();
+                    return;
+                }
+
+                qCDebug(dcPcElectric()) << "Successfully set led brightness to" << percentage << "%";
+            });
+        }
+    });
+
     m_connections.insert(thing, connection);
     info->finish(Thing::ThingErrorNoError);
 

@@ -35,16 +35,6 @@
                             "maxValue": 100,
                             "unit": "Percentage",
                             "defaultValue": 50
-                        },
-                        {
-                            "id": "93654273-c4d3-4389-a81e-c0f065d9cd92",
-                            "name": "maxChargingCurrentOffline",
-                            "displayName": "Maximum offline charging current",
-                            "type": "uint",
-                            "unit": "Ampere",
-                            "defaultValue": 6,
-                            "minValue": 1,
-                            "maxValue": 32
                         }
                     ],
                     "stateTypes": [

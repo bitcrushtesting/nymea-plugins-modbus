@@ -131,6 +131,26 @@ QueuedModbusReply *PceWallbox::setChargingCurrent(quint16 chargingCurrent)
     return reply;
 }
 
+QueuedModbusReply *PceWallbox::setLedBrightness(quint16 percentage)
+{
+    if (m_aboutToDelete)
+        return nullptr;
+
+    QueuedModbusReply *reply = new QueuedModbusReply(QueuedModbusReply::RequestTypeWrite, setLedBrightnessDataUnit(percentage), this);
+
+    connect(reply, &QueuedModbusReply::finished, reply, &QueuedModbusReply::deleteLater);
+    connect(reply, &QueuedModbusReply::finished, this, [this, reply](){
+        if (m_currentReply == reply)
+            m_currentReply = nullptr;
+
+        sendNextRequest();
+        return;
+    });
+
+    enqueueRequest(reply, true);
+    return reply;
+}
+
 void PceWallbox::gracefullDeleteLater()
 {
     // Clean up the queue

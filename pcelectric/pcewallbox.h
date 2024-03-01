@@ -49,6 +49,8 @@ public:
 
     QueuedModbusReply *setChargingCurrent(quint16 chargingCurrent); // mA
 
+    QueuedModbusReply *setLedBrightness(quint16 percentage);
+
     // Note: the modbus implementation of the wallbox gets stuck if a Modbus request has been sent
     // and we disconnect the socket before the response has arrived. Only a reboot of the wallbox
     // fixes the broken communication afterwards. This method waits for the current request before closing the
@@ -65,7 +67,6 @@ private:
     QueuedModbusReply *m_currentReply = nullptr;
     QQueue<QueuedModbusReply *> m_queue;
     bool m_aboutToDelete = false;
-
 
     void sendNextRequest();
     void enqueueRequest(QueuedModbusReply *reply, bool prepend = false);
